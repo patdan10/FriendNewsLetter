@@ -1,3 +1,4 @@
+const { version } = require('../package.json');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -436,6 +437,7 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   <div style="text-align:center;padding:8px 0 16px;">
     <a href="/admin/responses" style="color:#667eea;font-size:14px;text-decoration:none;font-weight:600;">View this month's responses →</a>
   </div>
+  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
 </div>
 <script>
 function addQuestion(){
