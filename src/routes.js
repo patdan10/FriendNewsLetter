@@ -102,6 +102,12 @@ router.post('/admin/send-results', async (req, res) => {
   }
 });
 
+router.post('/admin/questions', (req, res) => {
+  const questions = [].concat(req.body.question || []).map(q => q.trim()).filter(Boolean);
+  db.saveQuestions(questions);
+  res.redirect('/admin');
+});
+
 router.post('/admin/subscribers', (req, res) => {
   const { email, name, action } = req.body;
   try {
@@ -250,11 +256,15 @@ function adminPage({ newsletter, responses, subscribers, questions }) {
       </td>
     </tr>`).join('');
 
-  const questionRows = questions.map((q, i) => `
-    <tr><td style="color:#6b7280;width:28px">${i + 1}.</td><td>${esc(q)}</td></tr>`).join('');
+  const questionInputs = questions.map((q, i) => `
+    <div class="q-row">
+      <span class="q-num">${i + 1}.</span>
+      <input type="text" name="question" value="${esc(q)}" placeholder="Question...">
+      <button type="button" class="rm-btn" onclick="rmQuestion(this)">✕</button>
+    </div>`).join('');
 
   const noQuestions = questions.length === 0
-    ? '<p style="color:#dc2626;font-size:14px;">⚠️ No questions found in questions.csv</p>'
+    ? '<p style="color:#dc2626;font-size:14px;margin-bottom:12px;">⚠️ No questions yet — add one below.</p>'
     : '';
 
   return `<!DOCTYPE html><html lang="en"><head>
@@ -295,6 +305,11 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 .add-form input{flex:1;min-width:140px;padding:9px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit}
 .add-form input:focus{outline:none;border-color:#667eea}
 .add-btn{background:#667eea;color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap}
+.save-btn{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
+.q-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.q-num{color:#9ca3af;font-size:13px;min-width:20px;text-align:right;flex-shrink:0}
+.q-row input{flex:1;padding:9px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;color:#1f2937}
+.q-row input:focus{outline:none;border-color:#667eea}
 </style></head><body>
 <div class="wrap">
   <div class="hdr">
@@ -340,17 +355,30 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   </div>
 
   <div class="card">
-    <h2>Questions for this month <span style="font-weight:400;font-size:13px;color:#9ca3af">— edit questions.csv to change</span></h2>
-    ${noQuestions}
-    <table>${questionRows}</table>
-    <p style="margin-top:14px;color:#9ca3af;font-size:13px;">
-      Questions are read from <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">questions.csv</code> each time a new month starts.
-      Edit that file to change next month's questions — one question per line.
-      ${newsletter.form_sent ? '<br><strong style="color:#374151">This month\'s questions are already locked in (form emails were sent).</strong>' : ''}
-    </p>
+    <h2>Questions <span style="font-weight:400;font-size:13px;color:#9ca3af">— used when next month's form is sent</span></h2>
+    ${newsletter.form_sent ? '<p style="margin-bottom:14px;color:#92400e;background:#fef3c7;border-radius:8px;padding:10px 14px;font-size:13px;">⚠️ This month\'s form was already sent — changes here apply to next month.</p>' : ''}
+    <form method="POST" action="/admin/questions">
+      ${noQuestions}
+      <div id="q-list">${questionInputs}</div>
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <button type="button" class="add-btn" onclick="addQuestion()">+ Add Question</button>
+        <button type="submit" class="save-btn">Save Questions</button>
+      </div>
+    </form>
   </div>
 </div>
 <script>
+function addQuestion(){
+  const list=document.getElementById('q-list');
+  const n=list.children.length+1;
+  const d=document.createElement('div');d.className='q-row';
+  d.innerHTML='<span class="q-num">'+n+'.</span><input type="text" name="question" placeholder="New question..."><button type="button" class="rm-btn" onclick="rmQuestion(this)">&#x2715;</button>';
+  list.appendChild(d);d.querySelector('input').focus();
+}
+function rmQuestion(btn){
+  btn.parentElement.remove();
+  document.querySelectorAll('.q-num').forEach((el,i)=>el.textContent=(i+1)+'.');
+}
 async function act(action){
   const msg=document.getElementById('msg');
   msg.style.display='block';msg.className='';msg.textContent='Sending…';

@@ -4,14 +4,18 @@ const path = require('path');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SUBSCRIBERS_CSV = path.join(DATA_DIR, 'subscribers.csv');
-const QUESTIONS_CSV = path.join(__dirname, '..', 'questions.csv');
+const QUESTIONS_CSV = path.join(DATA_DIR, 'questions.csv');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// On first deploy, seed subscribers.csv from the repo copy
+// On first deploy, seed from repo copies
 const rootSubscribersCSV = path.join(__dirname, '..', 'subscribers.csv');
 if (!fs.existsSync(SUBSCRIBERS_CSV) && fs.existsSync(rootSubscribersCSV)) {
   fs.copyFileSync(rootSubscribersCSV, SUBSCRIBERS_CSV);
+}
+const rootQuestionsCSV = path.join(__dirname, '..', 'questions.csv');
+if (!fs.existsSync(QUESTIONS_CSV) && fs.existsSync(rootQuestionsCSV)) {
+  fs.copyFileSync(rootQuestionsCSV, QUESTIONS_CSV);
 }
 
 // ─── CSV helpers ─────────────────────────────────────────────────────────────
@@ -106,6 +110,10 @@ module.exports = {
   getQuestions() {
     const rows = readCSV(QUESTIONS_CSV);
     return rows.map(r => r.question).filter(Boolean);
+  },
+
+  saveQuestions(questions) {
+    writeCSV(QUESTIONS_CSV, ['question'], questions.map(q => ({ question: q })));
   },
 
   // ─── Newsletters (JSON) ───────────────────────────────────────────────────
