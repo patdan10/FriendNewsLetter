@@ -108,10 +108,6 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
   const monthName = MONTHS[month - 1];
 
   const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
-  const avatar = name => {
-    const h = personHue(name);
-    return `<div style="width:36px;height:36px;background:linear-gradient(135deg,hsl(${h},55%,55%),hsl(${(h+40)%360},55%,45%));border-radius:50%;text-align:center;line-height:36px;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;">${name.slice(0,2).toUpperCase()}</div>`;
-  };
 
   const noResp = responses.length === 0
     ? '<p style="text-align:center;color:#9ca3af;padding:40px 20px;">No responses were submitted this month.</p>'
@@ -124,14 +120,15 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
       .filter(a => a.text);
     if (!answered.length) return '';
 
-    const rows = answered.map(a => `
-<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid #f3f4f6;">
-  ${avatar(a.name)}
-  <div>
-    <div style="font-weight:700;color:#1f2937;font-size:14px;margin-bottom:4px;">${esc(a.name)}</div>
-    <div style="color:#374151;font-size:15px;line-height:1.7;white-space:pre-wrap;">${esc(a.text)}</div>
-  </div>
-</div>`).join('');
+    const rows = answered.map((a, i) => {
+      const h = personHue(a.name);
+      const last = i === answered.length - 1;
+      return `
+<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
+  <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(a.name)}</p>
+  <p style="margin:0;color:#374151;font-size:15px;line-height:1.75;white-space:pre-wrap;">${esc(a.text)}</p>
+</div>`;
+    }).join('');
 
     return `
 <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
@@ -143,20 +140,19 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
   }).join('');
 
   // Photos & links grouped by person at the bottom
-  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map(r => {
+  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map((r, i, arr) => {
     const name = r.name || r.email;
+    const h = personHue(name);
+    const last = i === arr.length - 1;
     const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
     const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
     const linksHtml = r.links?.length
       ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">🔗 ${esc(l.label || l.url)}</a>`).join('')
       : '';
     return `
-<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid #f3f4f6;">
-  ${avatar(name)}
-  <div style="flex:1;">
-    <div style="font-weight:700;color:#1f2937;font-size:14px;margin-bottom:8px;">${esc(name)}</div>
-    ${imgHtml}${linksHtml}
-  </div>
+<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
+  <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
+  ${imgHtml}${linksHtml}
 </div>`;
   }).join('');
 
