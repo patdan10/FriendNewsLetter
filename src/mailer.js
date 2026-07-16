@@ -3,7 +3,24 @@ const nodemailer = require('nodemailer');
 const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
 
-// ─── Sender: Resend (HTTPS) or Ethereal (local dev) ─────────────────────────
+// ─── Sender: Gmail API / Resend / Ethereal ───────────────────────────────────
+
+async function sendViaGmail({ from, to, subject, html }) {
+  const { google } = require('googleapis');
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET
+  );
+  oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  const raw = Buffer.from(
+    [`From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
+     'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', '', html].join('\r\n')
+  ).toString('base64url');
+  const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+  console.log(`  📬 ${to}: sent (id: ${res.data.id})`);
+  return res.data;
+}
 
 async function sendViaResend({ from, to, subject, html }) {
   const { Resend } = require('resend');
@@ -34,6 +51,9 @@ async function sendViaEthereal({ from, to, subject, html }) {
 
 async function deliver({ toEmail, toName, subject, html }) {
   const from = process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>';
+  if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_REFRESH_TOKEN) {
+    return sendViaGmail({ from, to: toEmail, subject, html });
+  }
   if (process.env.RESEND_API_KEY) {
     return sendViaResend({ from, to: toEmail, subject, html });
   }
