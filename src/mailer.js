@@ -42,11 +42,11 @@ async function sendViaEthereal({ from, to, subject, html }) {
 
 function parseFrom(from) {
   const m = from.match(/^"?([^"<]+?)"?\s*<([^>]+)>$/);
-  return m ? { fromName: m[1].trim(), fromEmail: m[2].trim() } : { fromName: 'Friend Newsletter', fromEmail: from.trim() };
+  return m ? { fromName: m[1].trim(), fromEmail: m[2].trim() } : { fromName: 'The Horseback Times', fromEmail: from.trim() };
 }
 
 async function deliver({ toEmail, toName, subject, html }) {
-  const from = process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>';
+  const from = process.env.FROM_EMAIL || '"The Horseback Times" <newsletter@example.com>';
   if (process.env.BREVO_API_KEY) {
     const { fromName, fromEmail } = parseFrom(from);
     return sendViaBrevo({ fromName, fromEmail, toEmail, toName, subject, html });
@@ -81,7 +81,7 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
 <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;">
-  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">📰 Friend Newsletter</h1>
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">🐴 The Horseback Times</h1>
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year}</p>
 </td></tr>
 <tr><td style="padding:40px;">
@@ -97,7 +97,7 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Responses will be compiled and shared with the group on the last day of the month. You can include links and images!</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · Sent with ❤️</p>
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
 </td></tr>
 </table>
 </td></tr>
@@ -170,14 +170,14 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 <tr><td align="center">
 <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
 <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;">
-  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">📰 Friend Newsletter</h1>
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">🐴 The Horseback Times</h1>
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:18px;font-weight:500;">${monthName} ${year} Edition</p>
   <p style="margin:6px 0 0;color:rgba(255,255,255,.7);font-size:14px;">${responses.length} response${responses.length !== 1 ? 's' : ''} from your friends</p>
 </td></tr>
 <tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">✏️ Update your response</a></p>` : ''}
-  <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · ${monthName} ${year} · Sent with ❤️</p>
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · ${monthName} ${year} · Sent with ❤️</p>
 </td></tr>
 </table>
 </td></tr>
@@ -198,7 +198,7 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   const editUrl = `${baseUrl}/form/${token}`;
   return deliver({
     toEmail, toName,
-    subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} Friend Newsletter`,
+    subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
     html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl })
   });
 }
@@ -223,7 +223,7 @@ function buildReminderEmail({ name, month, year, formUrl }) {
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Only takes a few minutes. No worries if you can't — we'll miss you! 😊</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · Sent with ❤️</p>
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
 </td></tr>
 </table>
 </td></tr>

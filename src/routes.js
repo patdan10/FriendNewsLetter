@@ -407,7 +407,7 @@ function formPage({ newsletter, email, name, existing, token }) {
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${monthName} ${newsletter.year} — Friend Newsletter</title>
+<title>${monthName} ${newsletter.year} — The Horseback Times</title>
 <style>
 ${BASE_STYLE}
 body{padding:40px 16px}
@@ -439,7 +439,7 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .sub-btn:hover{opacity:.9}
 </style></head><body>
 <div class="wrap">
-  <div class="hdr"><h1>📰 Friend Newsletter</h1><p>${monthName} ${newsletter.year} Update</p></div>
+  <div class="hdr"><h1>🐴 The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
   <div class="card">
     ${existing ? '<div class="already">✓ You already submitted — resubmitting will update your answers.</div>' : ''}
     <p style="margin-bottom:28px;color:#6b7280;font-size:15px;">Hey <strong style="color:#1f2937">${esc(name)}</strong>! Share what's been going on in your life this month.</p>
@@ -484,7 +484,7 @@ function tab(id,btn){
 function thankYouPage(monthName, year, formUrl) {
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Thanks! — Friend Newsletter</title>
+<title>Thanks! — The Horseback Times</title>
 <style>
 ${BASE_STYLE}
 body{display:flex;align-items:center;justify-content:center;padding:16px}
@@ -549,7 +549,7 @@ function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl,
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${isAdmin ? 'Admin — ' : ''}Friend Newsletter</title>
+<title>${isAdmin ? 'Admin — ' : ''}The Horseback Times</title>
 <style>
 ${BASE_STYLE}
 body{padding:32px 16px}
@@ -596,7 +596,7 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 <div class="wrap">
   <div class="hdr">
     <div>
-      <h1>📰 Friend Newsletter${isAdmin ? ' Admin' : ''}</h1>
+      <h1>🐴 The Horseback Times${isAdmin ? ' Admin' : ''}</h1>
       <p>${monthName} ${newsletter.year}${isAdmin ? ` · Newsletter #${newsletter.id}` : ''}</p>
     </div>
     ${isAdmin
@@ -817,7 +817,7 @@ function tab(id,btn){
 function loginPage(error, next) {
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Login — Friend Newsletter</title>
+<title>Admin Login — The Horseback Times</title>
 <style>
 ${BASE_STYLE}
 body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
@@ -833,7 +833,7 @@ input:focus{outline:none;border-color:#667eea}
 .sub{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px}
 </style></head><body>
 <div class="card">
-  <div class="hdr"><h1>📰 Admin Login</h1><p>Friend Newsletter</p></div>
+  <div class="hdr"><h1>📰 Admin Login</h1><p>The Horseback Times</p></div>
   <div class="body">
     ${error ? '<div class="err">⚠️ Incorrect password</div>' : ''}
     <form method="POST" action="/admin/login">
