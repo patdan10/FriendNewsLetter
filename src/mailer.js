@@ -174,4 +174,4 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   return info;
 }
 
-module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail };
+module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, buildCompiledEmail };

@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { parseToken, sendFormEmail, sendCompiledEmail } = require('./mailer');
+const { parseToken, sendFormEmail, sendCompiledEmail, buildCompiledEmail } = require('./mailer');
 const { sendFormEmails, sendCompiledEmails } = require('./scheduler');
 
 const router = express.Router();
@@ -160,6 +160,15 @@ router.get('/admin/send-results/stream', (req, res) => {
     db.markResultsSent(newsletter.id);
     emit('done', `Done — ${ok} sent${fail ? `, ${fail} failed` : ''}`);
   });
+});
+
+router.get('/admin/responses', (req, res) => {
+  const now = new Date();
+  const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+  const responses = db.getResponses(newsletter.id);
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const html = buildCompiledEmail({ month: newsletter.month, year: newsletter.year, responses, baseUrl });
+  res.send(html);
 });
 
 router.post('/admin/questions', (req, res) => {
@@ -423,6 +432,9 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
         <button type="submit" class="save-btn">Save Questions</button>
       </div>
     </form>
+  </div>
+  <div style="text-align:center;padding:8px 0 16px;">
+    <a href="/admin/responses" style="color:#667eea;font-size:14px;text-decoration:none;font-weight:600;">View this month's responses →</a>
   </div>
 </div>
 <script>
