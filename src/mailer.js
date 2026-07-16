@@ -5,18 +5,28 @@ const MONTHS = ['January','February','March','April','May','June',
 
 let transporterPromise;
 function getTransporter() {
-  if (!transporterPromise) transporterPromise = createTransporter();
+  if (!transporterPromise) {
+    transporterPromise = createTransporter().catch(e => {
+      transporterPromise = null; // reset so next call retries
+      throw e;
+    });
+  }
   return transporterPromise;
 }
 
 async function createTransporter() {
   if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
+    const port = parseInt(process.env.SMTP_PORT || '587');
+    const t = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      port,
+      secure: process.env.SMTP_SECURE === 'true' || port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
     });
+    return t;
   }
   const testAccount = await nodemailer.createTestAccount();
   console.log('\n📧 Ethereal test email account created:');
