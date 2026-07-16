@@ -3,41 +3,41 @@ const nodemailer = require('nodemailer');
 const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
 
-let transporterPromise;
-function getTransporter() {
-  if (!transporterPromise) {
-    transporterPromise = createTransporter().catch(e => {
-      transporterPromise = null; // reset so next call retries
-      throw e;
-    });
-  }
-  return transporterPromise;
+// ─── Sender: Resend (HTTPS) or Ethereal (local dev) ─────────────────────────
+
+async function sendViaResend({ from, to, subject, html }) {
+  const { Resend } = require('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { data, error } = await resend.emails.send({ from, to, subject, html });
+  if (error) throw new Error(error.message);
+  console.log(`  📬 ${to}: sent (id: ${data.id})`);
+  return data;
 }
 
-async function createTransporter() {
-  if (process.env.SMTP_HOST) {
-    const port = parseInt(process.env.SMTP_PORT || '587');
-    const t = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: process.env.SMTP_SECURE === 'true' || port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 20000,
+let etherealTransporter;
+async function sendViaEthereal({ from, to, subject, html }) {
+  if (!etherealTransporter) {
+    const testAccount = await nodemailer.createTestAccount();
+    console.log('\n📧 Ethereal test account:');
+    console.log(`   Preview: https://ethereal.email/messages`);
+    console.log(`   Login:   ${testAccount.user} / ${testAccount.pass}\n`);
+    etherealTransporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email', port: 587, secure: false,
+      auth: { user: testAccount.user, pass: testAccount.pass }
     });
-    return t;
   }
-  const testAccount = await nodemailer.createTestAccount();
-  console.log('\n📧 Ethereal test email account created:');
-  console.log(`   Inbox preview: https://ethereal.email/messages`);
-  console.log(`   Login: ${testAccount.user} / ${testAccount.pass}\n`);
-  return nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
-    secure: false,
-    auth: { user: testAccount.user, pass: testAccount.pass }
-  });
+  const info = await etherealTransporter.sendMail({ from, to, subject, html });
+  const preview = nodemailer.getTestMessageUrl(info);
+  if (preview) console.log(`  📬 ${to}: ${preview}`);
+  return info;
+}
+
+async function deliver({ toEmail, toName, subject, html }) {
+  const from = process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>';
+  if (process.env.RESEND_API_KEY) {
+    return sendViaResend({ from, to: toEmail, subject, html });
+  }
+  return sendViaEthereal({ from, to: `${toName} <${toEmail}>`, subject, html });
 }
 
 function makeToken(newsletterId, email) {
@@ -158,30 +158,20 @@ function buildCompiledEmail({ month, year, responses, baseUrl }) {
 }
 
 async function sendFormEmail({ toEmail, toName, newsletter, baseUrl }) {
-  const t = await getTransporter();
   const token = makeToken(newsletter.id, toEmail);
-  const info = await t.sendMail({
-    from: process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>',
-    to: `${toName} <${toEmail}>`,
+  return deliver({
+    toEmail, toName,
     subject: `📝 ${MONTHS[newsletter.month - 1]} ${newsletter.year} — Share your update!`,
     html: buildFormEmail({ name: toName, month: newsletter.month, year: newsletter.year, questions: newsletter.questions, formUrl: `${baseUrl}/form/${token}` })
   });
-  const preview = nodemailer.getTestMessageUrl(info);
-  if (preview) console.log(`  📬 ${toEmail}: ${preview}`);
-  return info;
 }
 
 async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseUrl }) {
-  const t = await getTransporter();
-  const info = await t.sendMail({
-    from: process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>',
-    to: `${toName} <${toEmail}>`,
+  return deliver({
+    toEmail, toName,
     subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} Friend Newsletter`,
     html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, responses, baseUrl })
   });
-  const preview = nodemailer.getTestMessageUrl(info);
-  if (preview) console.log(`  📬 ${toEmail}: ${preview}`);
-  return info;
 }
 
 module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, buildCompiledEmail };
