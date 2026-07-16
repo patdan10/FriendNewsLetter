@@ -352,6 +352,12 @@ router.get('/admin/newsletter/:id', (req, res) => {
   res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
 });
 
+router.post('/questions', (req, res) => {
+  const questions = [].concat(req.body.question || []).map(q => q.trim()).filter(Boolean);
+  db.saveQuestions(questions);
+  res.redirect(req.get('Referer') || '/');
+});
+
 router.post('/admin/questions', (req, res) => {
   const questions = [].concat(req.body.question || []).map(q => q.trim()).filter(Boolean);
   db.saveQuestions(questions);
@@ -540,9 +546,6 @@ function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl,
     ? '<p style="color:#dc2626;font-size:14px;margin-bottom:12px;">⚠️ No questions yet — add one below.</p>'
     : '';
 
-  const questionsReadOnly = questions.length === 0
-    ? '<p style="color:#9ca3af;font-size:14px;">No questions set yet.</p>'
-    : questions.map((q, i) => `<p style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151;">${i + 1}. ${esc(q)}</p>`).join('');
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -642,17 +645,16 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   </div>
 
   <div class="card">
-    <h2>Questions${isAdmin ? ' <span style="font-weight:400;font-size:13px;color:#9ca3af">— used when next month\'s form is sent</span>' : ''}</h2>
-    ${isAdmin ? `
+    <h2>Questions <span style="font-weight:400;font-size:13px;color:#9ca3af">— used when next month's form is sent</span></h2>
     ${newsletter.form_sent ? '<p style="margin-bottom:14px;color:#92400e;background:#fef3c7;border-radius:8px;padding:10px 14px;font-size:13px;">⚠️ This month\'s form was already sent — changes here apply to next month.</p>' : ''}
-    <form method="POST" action="/admin/questions">
+    <form method="POST" action="${isAdmin ? '/admin/questions' : '/questions'}">
       ${noQuestions}
       <div id="q-list">${questionInputs}</div>
       <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
         <button type="button" class="add-btn" onclick="addQuestion()">+ Add Question</button>
         <button type="submit" class="save-btn">Save Questions</button>
       </div>
-    </form>` : questionsReadOnly}
+    </form>
   </div>
 
   <div style="text-align:center;padding:8px 0 16px;display:flex;justify-content:center;gap:24px;flex-wrap:wrap;">
@@ -674,7 +676,6 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>` : ''}
 </div>
 <script>
-${isAdmin ? `
 function addQuestion(){
   const list=document.getElementById('q-list');
   const n=list.children.length+1;
@@ -686,6 +687,7 @@ function rmQuestion(btn){
   btn.parentElement.remove();
   document.querySelectorAll('.q-num').forEach((el,i)=>el.textContent=(i+1)+'.');
 }
+${isAdmin ? `
 function act(action){
   const log=document.getElementById('log');
   log.innerHTML='';log.style.display='block';

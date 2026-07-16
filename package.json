@@ -1,6 +1,6 @@
 {
   "name": "friend-newsletter",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Monthly friend newsletter with form collection",
   "main": "src/index.js",
   "scripts": {
