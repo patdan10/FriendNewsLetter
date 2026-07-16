@@ -167,7 +167,7 @@ router.get('/admin/responses', (req, res) => {
   const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
   const responses = db.getResponses(newsletter.id);
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  const html = buildCompiledEmail({ month: newsletter.month, year: newsletter.year, responses, baseUrl });
+  const html = buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl });
   res.send(html);
 });
 

@@ -104,53 +104,69 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
 </table></body></html>`;
 }
 
-function buildCompiledEmail({ month, year, responses, baseUrl }) {
+function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
   const monthName = MONTHS[month - 1];
 
-  const blocks = responses.map(r => {
-    const initials = (r.name || r.email).slice(0, 2).toUpperCase();
-    const hue = [...(r.name || r.email)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
-
-    const answersHtml = r.answers
-      .map((a, i) => a?.trim() ? `<p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.7;white-space:pre-wrap;">${esc(a)}</p>` : '')
-      .join('');
-
-    const imgSrc = r.image_filename
-      ? `${baseUrl}/uploads/${esc(r.image_filename)}`
-      : r.image_url ? esc(r.image_url) : null;
-    const imgHtml = imgSrc
-      ? `<div style="margin-top:16px;"><img src="${imgSrc}" alt="Shared photo" style="max-width:100%;border-radius:10px;display:block;"></div>`
-      : '';
-
-    const linksHtml = r.links?.length
-      ? `<div style="margin-top:16px;">
-          <p style="margin:0 0 8px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shared Links</p>
-          ${r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:4px 8px 4px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:6px 14px;border-radius:20px;font-size:14px;">🔗 ${esc(l.label || l.url)}</a>`).join('')}
-        </div>`
-      : '';
-
-    const date = new Date(r.submitted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-
-    return `
-<div style="border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;margin-bottom:24px;">
-  <div style="background:linear-gradient(135deg,hsl(${hue},55%,55%),hsl(${(hue+40)%360},55%,45%));padding:20px 24px;">
-    <table cellpadding="0" cellspacing="0"><tr>
-      <td style="width:52px;vertical-align:middle;">
-        <div style="width:48px;height:48px;background:rgba(255,255,255,.3);border-radius:50%;text-align:center;line-height:48px;font-size:18px;font-weight:700;color:#fff;">${initials}</div>
-      </td>
-      <td style="padding-left:16px;vertical-align:middle;">
-        <div style="color:#fff;font-size:18px;font-weight:700;">${esc(r.name || r.email)}</div>
-        <div style="color:rgba(255,255,255,.8);font-size:13px;">Submitted ${date}</div>
-      </td>
-    </tr></table>
-  </div>
-  <div style="padding:24px;background:#fff;">${answersHtml}${imgHtml}${linksHtml}</div>
-</div>`;
-  }).join('');
+  const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  const avatar = name => {
+    const h = personHue(name);
+    return `<div style="width:36px;height:36px;background:linear-gradient(135deg,hsl(${h},55%,55%),hsl(${(h+40)%360},55%,45%));border-radius:50%;text-align:center;line-height:36px;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;">${name.slice(0,2).toUpperCase()}</div>`;
+  };
 
   const noResp = responses.length === 0
     ? '<p style="text-align:center;color:#9ca3af;padding:40px 20px;">No responses were submitted this month.</p>'
     : '';
+
+  // One block per question, answers from each person underneath
+  const questionBlocks = (questions || []).map((q, qi) => {
+    const answered = responses
+      .map(r => ({ name: r.name || r.email, text: (r.answers || [])[qi]?.trim() }))
+      .filter(a => a.text);
+    if (!answered.length) return '';
+
+    const rows = answered.map(a => `
+<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid #f3f4f6;">
+  ${avatar(a.name)}
+  <div>
+    <div style="font-weight:700;color:#1f2937;font-size:14px;margin-bottom:4px;">${esc(a.name)}</div>
+    <div style="color:#374151;font-size:15px;line-height:1.7;white-space:pre-wrap;">${esc(a.text)}</div>
+  </div>
+</div>`).join('');
+
+    return `
+<div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+  <div style="background:linear-gradient(135deg,#667eea,#764ba2);padding:14px 20px;">
+    <p style="margin:0;color:#fff;font-size:15px;font-weight:700;">${qi + 1}. ${esc(q)}</p>
+  </div>
+  <div style="padding:4px 20px 6px;">${rows}</div>
+</div>`;
+  }).join('');
+
+  // Photos & links grouped by person at the bottom
+  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map(r => {
+    const name = r.name || r.email;
+    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
+    const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
+    const linksHtml = r.links?.length
+      ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">🔗 ${esc(l.label || l.url)}</a>`).join('')
+      : '';
+    return `
+<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid #f3f4f6;">
+  ${avatar(name)}
+  <div style="flex:1;">
+    <div style="font-weight:700;color:#1f2937;font-size:14px;margin-bottom:8px;">${esc(name)}</div>
+    ${imgHtml}${linksHtml}
+  </div>
+</div>`;
+  }).join('');
+
+  const mediaSection = mediaRows ? `
+<div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+  <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
+    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">📸 Photos &amp; Links</p>
+  </div>
+  <div style="padding:4px 20px 6px;">${mediaRows}</div>
+</div>` : '';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
@@ -162,7 +178,7 @@ function buildCompiledEmail({ month, year, responses, baseUrl }) {
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:18px;font-weight:500;">${monthName} ${year} Edition</p>
   <p style="margin:6px 0 0;color:rgba(255,255,255,.7);font-size:14px;">${responses.length} response${responses.length !== 1 ? 's' : ''} from your friends</p>
 </td></tr>
-<tr><td style="padding:32px 40px;">${noResp}${blocks}</td></tr>
+<tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · ${monthName} ${year} · Sent with ❤️</p>
 </td></tr>
@@ -184,7 +200,7 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   return deliver({
     toEmail, toName,
     subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} Friend Newsletter`,
-    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, responses, baseUrl })
+    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl })
   });
 }
 
