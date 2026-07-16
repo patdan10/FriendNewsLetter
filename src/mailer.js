@@ -3,31 +3,22 @@ const nodemailer = require('nodemailer');
 const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
 
-// ─── Sender: Gmail API / Resend / Ethereal ───────────────────────────────────
+// ─── Sender: Brevo (HTTPS API) or Ethereal (local dev) ───────────────────────
 
-async function sendViaGmail({ from, to, subject, html }) {
-  const { google } = require('googleapis');
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET
-  );
-  oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-  const raw = Buffer.from(
-    [`From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
-     'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', '', html].join('\r\n')
-  ).toString('base64url');
-  const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
-  console.log(`  📬 ${to}: sent (id: ${res.data.id})`);
-  return res.data;
-}
-
-async function sendViaResend({ from, to, subject, html }) {
-  const { Resend } = require('resend');
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  const { data, error } = await resend.emails.send({ from, to, subject, html });
-  if (error) throw new Error(error.message);
-  console.log(`  📬 ${to}: sent (id: ${data.id})`);
+async function sendViaBrevo({ fromName, fromEmail, toEmail, toName, subject, html }) {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: toEmail, name: toName }],
+      subject,
+      htmlContent: html
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || JSON.stringify(data));
+  console.log(`  📬 ${toEmail}: sent`);
   return data;
 }
 
@@ -49,13 +40,16 @@ async function sendViaEthereal({ from, to, subject, html }) {
   return info;
 }
 
+function parseFrom(from) {
+  const m = from.match(/^"?([^"<]+?)"?\s*<([^>]+)>$/);
+  return m ? { fromName: m[1].trim(), fromEmail: m[2].trim() } : { fromName: 'Friend Newsletter', fromEmail: from.trim() };
+}
+
 async function deliver({ toEmail, toName, subject, html }) {
   const from = process.env.FROM_EMAIL || '"Friend Newsletter" <newsletter@example.com>';
-  if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_REFRESH_TOKEN) {
-    return sendViaGmail({ from, to: toEmail, subject, html });
-  }
-  if (process.env.RESEND_API_KEY) {
-    return sendViaResend({ from, to: toEmail, subject, html });
+  if (process.env.BREVO_API_KEY) {
+    const { fromName, fromEmail } = parseFrom(from);
+    return sendViaBrevo({ fromName, fromEmail, toEmail, toName, subject, html });
   }
   return sendViaEthereal({ from, to: `${toName} <${toEmail}>`, subject, html });
 }
