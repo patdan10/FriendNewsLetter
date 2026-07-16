@@ -166,5 +166,19 @@ module.exports = {
 
   getResponse(newsletterId, email) {
     return load().responses.find(r => r.newsletter_id === newsletterId && r.email === email) || null;
+  },
+
+  getResponseById(id) {
+    return load().responses.find(r => r.id === id) || null;
+  },
+
+  patchResponse(id, { imageUrl, imageFilename, links }) {
+    withDb(db => {
+      const r = db.responses.find(r => r.id === id);
+      if (!r) return;
+      r.image_url = imageUrl || null;
+      r.image_filename = imageFilename !== undefined ? imageFilename : r.image_filename;
+      r.links = links || [];
+    });
   }
 };

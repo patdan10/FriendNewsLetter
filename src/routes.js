@@ -172,6 +172,30 @@ router.get('/admin/responses', (req, res) => {
   res.send(html);
 });
 
+router.get('/admin/response/:id', (req, res) => {
+  const response = db.getResponseById(parseInt(req.params.id));
+  if (!response) return res.status(404).send(errorPage('Response not found'));
+  const newsletter = db.getNewsletter(response.newsletter_id);
+  res.send(editResponsePage({ response, newsletter }));
+});
+
+router.post('/admin/response/:id', upload.single('image'), (req, res) => {
+  const response = db.getResponseById(parseInt(req.params.id));
+  if (!response) return res.status(404).send(errorPage('Response not found'));
+
+  const imageUrl = (req.body.image_url || '').trim();
+  const imageFilename = req.file ? path.basename(req.file.path) : (req.body.clear_image === '1' ? null : response.image_filename);
+
+  const linkLabels = [].concat(req.body.link_label || []);
+  const linkUrls = [].concat(req.body.link_url || []);
+  const links = linkUrls
+    .map((url, i) => ({ url: normalizeUrl(url.trim()), label: (linkLabels[i] || '').trim() }))
+    .filter(l => l.url);
+
+  db.patchResponse(response.id, { imageUrl, imageFilename, links });
+  res.redirect('/admin/responses');
+});
+
 router.post('/admin/questions', (req, res) => {
   const questions = [].concat(req.body.question || []).map(q => q.trim()).filter(Boolean);
   db.saveQuestions(questions);
@@ -312,19 +336,23 @@ function adminPage({ newsletter, responses, subscribers, questions }) {
   const responded = new Set(responses.map(r => r.email));
   const rate = subscribers.length ? Math.round((responses.length / subscribers.length) * 100) : 0;
 
-  const subRows = subscribers.map(s => `
+  const subRows = subscribers.map(s => {
+    const r = responses.find(r => r.email === s.email);
+    return `
     <tr>
       <td>${esc(s.name)}</td>
       <td>${esc(s.email)}</td>
-      <td>${responded.has(s.email) ? '<span class="badge-yes">✓ Responded</span>' : '<span class="badge-no">—</span>'}</td>
-      <td>
+      <td>${r ? '<span class="badge-yes">✓ Responded</span>' : '<span class="badge-no">—</span>'}</td>
+      <td style="white-space:nowrap;">
+        ${r ? `<a href="/admin/response/${r.id}" class="edit-btn">Edit</a>` : ''}
         <form method="POST" action="/admin/subscribers" style="display:inline">
           <input type="hidden" name="email" value="${esc(s.email)}">
           <input type="hidden" name="action" value="remove">
           <button class="rm-btn" onclick="return confirm('Remove ${esc(s.name)}?')">Remove</button>
         </form>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const questionInputs = questions.map((q, i) => `
     <div class="q-row">
@@ -379,6 +407,7 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 .q-num{color:#9ca3af;font-size:13px;min-width:20px;text-align:right;flex-shrink:0}
 .q-row input{flex:1;padding:9px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;color:#1f2937}
 .q-row input:focus{outline:none;border-color:#667eea}
+.edit-btn{background:#e0e7ff;color:#4338ca;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;margin-right:6px;}
 </style></head><body>
 <div class="wrap">
   <div class="hdr">
@@ -469,6 +498,100 @@ function act(action){
     const p=document.createElement('p');p.className='ll le';p.textContent='Connection lost';
     log.appendChild(p);src.close();
   };
+}
+</script>
+</body></html>`;
+}
+
+function editResponsePage({ response, newsletter }) {
+  const monthName = MONTHS[(newsletter?.month || 1) - 1];
+  const year = newsletter?.year || '';
+  const questions = newsletter?.questions || [];
+
+  const answersHtml = questions.map((q, i) => `
+    <div style="margin-bottom:20px;">
+      <p style="font-weight:600;color:#374151;font-size:14px;margin-bottom:6px;">${i + 1}. ${esc(q)}</p>
+      <p style="color:#6b7280;font-size:14px;line-height:1.6;background:#f9fafb;padding:10px 14px;border-radius:8px;white-space:pre-wrap;">${esc(response.answers?.[i] || '—')}</p>
+    </div>`).join('');
+
+  const existingLinks = (response.links || []).map(l => `
+    <div class="link-row">
+      <input type="text" name="link_label" class="link-label" placeholder="Label" value="${esc(l.label)}">
+      <input type="text" name="link_url" class="link-url" placeholder="https://..." value="${esc(l.url)}">
+      <button type="button" class="rm" onclick="this.parentElement.remove()">✕</button>
+    </div>`).join('');
+
+  const currentImg = response.image_filename
+    ? `/uploads/${esc(response.image_filename)}`
+    : response.image_url ? esc(response.image_url) : null;
+  const currentImgHtml = currentImg
+    ? `<div style="margin-bottom:12px;"><img src="${currentImg}" style="max-width:100%;max-height:200px;border-radius:8px;display:block;"><label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:#dc2626;cursor:pointer;"><input type="checkbox" name="clear_image" value="1"> Remove current image</label></div>`
+    : '';
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edit Response — ${esc(response.name)}</title>
+<style>
+${BASE_STYLE}
+body{padding:32px 16px}
+.wrap{max-width:640px;margin:0 auto}
+.hdr{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px 16px 0 0;padding:24px 28px;color:#fff}
+.hdr h1{font-size:18px;font-weight:700;margin-bottom:2px}
+.hdr p{opacity:.8;font-size:13px}
+.card{background:#fff;padding:28px;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.sec{font-size:16px;font-weight:700;color:#1f2937;margin:24px 0 12px;padding-top:20px;border-top:2px solid #f3f4f6}
+input[type=text],input[type=url]{width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit}
+input:focus{outline:none;border-color:#667eea}
+.link-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.link-label{flex:.5}.link-url{flex:1}
+.rm{background:#fee2e2;color:#dc2626;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;flex-shrink:0}
+.add-btn{background:#ede9fe;color:#7c3aed;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
+input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius:8px;cursor:pointer}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tab{padding:7px 14px;border:2px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#6b7280;background:#fff}
+.tab.on{border-color:#667eea;color:#667eea;background:#f0f0ff}
+.tc{display:none}.tc.on{display:block}
+.save-btn{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:24px}
+.back{display:inline-block;margin-bottom:16px;color:#667eea;text-decoration:none;font-size:14px;font-weight:600}
+</style></head><body>
+<div class="wrap">
+  <a href="/admin/responses" class="back">← Back to responses</a>
+  <div class="hdr">
+    <h1>Edit Response — ${esc(response.name)}</h1>
+    <p>${monthName} ${year}</p>
+  </div>
+  <div class="card">
+    <p style="font-size:13px;color:#9ca3af;margin-bottom:16px;">Answers are shown for reference. Only photos and links can be edited here.</p>
+    ${answersHtml}
+    <form method="POST" action="/admin/response/${response.id}" enctype="multipart/form-data">
+      <div class="sec">🔗 Links</div>
+      <div id="links">${existingLinks}</div>
+      <button type="button" class="add-btn" onclick="addLink()">+ Add Link</button>
+
+      <div class="sec">🖼️ Photo</div>
+      ${currentImgHtml}
+      <div class="tabs">
+        <button type="button" class="tab on" onclick="tab('upload',this)">Upload new</button>
+        <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
+      </div>
+      <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
+      <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg"></div>
+
+      <button type="submit" class="save-btn">Save Changes</button>
+    </form>
+  </div>
+</div>
+<script>
+function addLink(){
+  const c=document.getElementById('links');
+  const d=document.createElement('div');d.className='link-row';
+  d.innerHTML='<input type="text" name="link_label" class="link-label" placeholder="Label"><input type="text" name="link_url" class="link-url" placeholder="https://..."><button type="button" class="rm" onclick="this.parentElement.remove()">&#x2715;</button>';
+  c.appendChild(d);d.querySelector('input').focus();
+}
+function tab(id,btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');document.getElementById('tc-'+id).classList.add('on');
 }
 </script>
 </body></html>`;
