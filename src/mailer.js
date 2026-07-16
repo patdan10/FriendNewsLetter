@@ -104,7 +104,7 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
 </table></body></html>`;
 }
 
-function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
+function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUrl }) {
   const monthName = MONTHS[month - 1];
 
   const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
@@ -176,6 +176,7 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl }) {
 </td></tr>
 <tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
+  ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">✏️ Update your response</a></p>` : ''}
   <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · ${monthName} ${year} · Sent with ❤️</p>
 </td></tr>
 </table>
@@ -193,11 +194,67 @@ async function sendFormEmail({ toEmail, toName, newsletter, baseUrl }) {
 }
 
 async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseUrl }) {
+  const token = makeToken(newsletter.id, toEmail);
+  const editUrl = `${baseUrl}/form/${token}`;
   return deliver({
     toEmail, toName,
     subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} Friend Newsletter`,
-    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl })
+    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl })
   });
 }
 
-module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, buildCompiledEmail };
+function buildReminderEmail({ name, month, year, formUrl }) {
+  const monthName = MONTHS[month - 1];
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+<tr><td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:40px;text-align:center;">
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">⏰ Friendly Reminder</h1>
+  <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year} Newsletter</p>
+</td></tr>
+<tr><td style="padding:40px;">
+  <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)}! 👋</p>
+  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">Just a quick reminder — the ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong> and we'd love to hear from you before then!</p>
+  <div style="text-align:center;margin-bottom:32px;">
+    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Submit My Update</a>
+  </div>
+  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Only takes a few minutes. No worries if you can't — we'll miss you! 😊</p>
+</td></tr>
+<tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;color:#9ca3af;font-size:12px;">Friend Newsletter · Sent with ❤️</p>
+</td></tr>
+</table>
+</td></tr>
+</table></body></html>`;
+}
+
+async function sendReminderEmail({ toEmail, toName, newsletter, baseUrl }) {
+  const token = makeToken(newsletter.id, toEmail);
+  return deliver({
+    toEmail, toName,
+    subject: `⏰ Reminder: ${MONTHS[newsletter.month - 1]} newsletter goes out in 2 days!`,
+    html: buildReminderEmail({ name: toName, month: newsletter.month, year: newsletter.year, formUrl: `${baseUrl}/form/${token}` })
+  });
+}
+
+async function sendAdminNotification({ responderName, newsletter, baseUrl }) {
+  const from = process.env.FROM_EMAIL || '';
+  const m = from.match(/<([^>]+)>/) || ['', from.trim()];
+  const adminEmail = m[1].trim();
+  if (!adminEmail) return;
+  const monthName = MONTHS[newsletter.month - 1];
+  return deliver({
+    toEmail: adminEmail,
+    toName: 'Admin',
+    subject: `🎉 ${responderName} submitted their ${monthName} response`,
+    html: `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Arial,sans-serif;padding:40px;max-width:500px;margin:0 auto;">
+<h2 style="color:#1f2937;">New response submitted!</h2>
+<p style="color:#374151;font-size:16px;margin:16px 0;"><strong>${esc(responderName)}</strong> just filled out the ${monthName} ${newsletter.year} newsletter form.</p>
+<a href="${baseUrl}/admin/responses" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">View Responses</a>
+</body></html>`
+  });
+}
+
+module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail };

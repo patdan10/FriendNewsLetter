@@ -11,7 +11,6 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'data', 'uploads')
 
 const routes = require('./routes');
 app.use('/', routes);
-app.get('/', (req, res) => res.redirect('/admin'));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Friend Newsletter running at http://localhost:${PORT}`);

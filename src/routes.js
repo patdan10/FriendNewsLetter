@@ -1,10 +1,11 @@
 const { version } = require('../package.json');
+const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { parseToken, sendFormEmail, sendCompiledEmail, buildCompiledEmail } = require('./mailer');
+const { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail } = require('./mailer');
 const { sendFormEmails, sendCompiledEmails } = require('./scheduler');
 
 const router = express.Router();
@@ -31,6 +32,56 @@ function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+function authHash(password) {
+  return crypto.createHmac('sha256', 'friendnewsletter-v1').update(password).digest('hex');
+}
+
+function parseCookies(req) {
+  const list = {};
+  (req.headers?.cookie || '').split(';').forEach(c => {
+    const [k, ...v] = c.split('=');
+    if (k?.trim()) list[k.trim()] = decodeURIComponent(v.join('=').trim());
+  });
+  return list;
+}
+
+function requireAuth(req, res, next) {
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) return next();
+  if (parseCookies(req).admin_auth === authHash(password)) return next();
+  res.redirect('/admin/login?next=' + encodeURIComponent(req.originalUrl));
+}
+
+router.use('/admin', (req, res, next) => {
+  if (req.path === '/login' || req.path === '/logout') return next();
+  requireAuth(req, res, next);
+});
+
+router.get('/admin/login', (req, res) => {
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) return res.redirect('/admin');
+  if (parseCookies(req).admin_auth === authHash(password)) return res.redirect('/admin');
+  res.send(loginPage(req.query.error, req.query.next));
+});
+
+router.post('/admin/login', (req, res) => {
+  const { password } = req.body;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminPassword && password !== adminPassword) {
+    return res.redirect('/admin/login?error=1&next=' + encodeURIComponent(req.body.next || '/admin'));
+  }
+  const hash = authHash(password || '');
+  res.setHeader('Set-Cookie', `admin_auth=${hash}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}; SameSite=Lax`);
+  res.redirect(req.body.next || '/admin');
+});
+
+router.get('/admin/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'admin_auth=; HttpOnly; Path=/; Max-Age=0');
+  res.redirect('/admin/login');
+});
 
 // ─── Form ────────────────────────────────────────────────────────────────────
 
@@ -67,7 +118,9 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
       .filter(l => l.url);
 
     db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename });
-    res.send(thankYouPage(MONTHS[newsletter.month - 1], newsletter.year));
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    sendAdminNotification({ responderName: name, newsletter, baseUrl }).catch(() => {});
+    res.send(thankYouPage(MONTHS[newsletter.month - 1], newsletter.year, `${baseUrl}/form/${req.params.token}`));
   } catch (e) {
     console.error(e);
     res.status(500).send(errorPage('Error saving response: ' + e.message));
@@ -76,13 +129,24 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 
-router.get('/admin', (req, res) => {
+function getDashboardData() {
   const now = new Date();
   const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
-  const responses = db.getResponses(newsletter.id);
-  const subscribers = db.getSubscribers();
-  const questions = db.getQuestions();
-  res.send(adminPage({ newsletter, responses, subscribers, questions }));
+  return {
+    newsletter,
+    responses: db.getResponses(newsletter.id),
+    subscribers: db.getSubscribers(),
+    questions: db.getQuestions(),
+    baseUrl: process.env.BASE_URL || 'http://localhost:3000'
+  };
+}
+
+router.get('/', (req, res) => {
+  res.send(dashboardPage({ ...getDashboardData(), isAdmin: false }));
+});
+
+router.get('/admin', (req, res) => {
+  res.send(dashboardPage({ ...getDashboardData(), isAdmin: true }));
 });
 
 router.post('/admin/send-form', async (req, res) => {
@@ -163,6 +227,81 @@ router.get('/admin/send-results/stream', (req, res) => {
   });
 });
 
+router.get('/admin/send-reminders/stream', (req, res) => {
+  sseStream(res, async (emit) => {
+    const now = new Date();
+    const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const responses = db.getResponses(newsletter.id);
+    const respondedEmails = new Set(responses.map(r => r.email));
+    const subscribers = db.getSubscribers();
+    const pending = subscribers.filter(s => !respondedEmails.has(s.email));
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
+    emit('info', `${pending.length} non-responder(s) of ${subscribers.length} subscriber(s)`);
+    if (!pending.length) {
+      emit('done', 'Everyone has responded — no reminders needed!');
+      return;
+    }
+
+    let ok = 0, fail = 0;
+    for (const sub of pending) {
+      emit('sending', `→ ${sub.name} <${sub.email}>`);
+      try {
+        await sendReminderEmail({ toEmail: sub.email, toName: sub.name, newsletter, baseUrl });
+        ok++; emit('ok', `✓ ${sub.email}`);
+      } catch (e) {
+        fail++; emit('err', `✗ ${sub.email}: ${e.message}`);
+      }
+    }
+    emit('done', `Done — ${ok} reminder${ok !== 1 ? 's' : ''} sent${fail ? `, ${fail} failed` : ''}`);
+  });
+});
+
+router.get('/admin/send-test/stream', (req, res) => {
+  sseStream(res, async (emit) => {
+    const now = new Date();
+    const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const from = process.env.FROM_EMAIL || '';
+    const m = from.match(/<([^>]+)>/) || ['', from.trim()];
+    const adminEmail = m[1].trim();
+
+    if (!adminEmail) {
+      emit('err', '✗ No email found — set FROM_EMAIL in your environment');
+      return;
+    }
+
+    emit('info', `Sending test emails to ${adminEmail}...`);
+
+    emit('sending', '→ Test form email');
+    try {
+      await sendFormEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, baseUrl });
+      emit('ok', `✓ Form email sent`);
+    } catch (e) {
+      emit('err', `✗ Form email failed: ${e.message}`);
+    }
+
+    emit('sending', '→ Test reminder email');
+    try {
+      await sendReminderEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, baseUrl });
+      emit('ok', `✓ Reminder email sent`);
+    } catch (e) {
+      emit('err', `✗ Reminder email failed: ${e.message}`);
+    }
+
+    emit('sending', '→ Test compiled email');
+    try {
+      const responses = db.getResponses(newsletter.id);
+      await sendCompiledEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, responses, baseUrl });
+      emit('ok', `✓ Compiled email sent`);
+    } catch (e) {
+      emit('err', `✗ Compiled email failed: ${e.message}`);
+    }
+
+    emit('done', `All test emails sent to ${adminEmail}`);
+  });
+});
+
 router.get('/admin/responses', (req, res) => {
   const now = new Date();
   const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
@@ -196,6 +335,23 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
   res.redirect('/admin/responses');
 });
 
+router.get('/admin/past', (req, res) => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const all = db.getAllNewsletters();
+  const past = all.filter(n => !(n.year === currentYear && n.month === currentMonth));
+  res.send(pastNewslettersPage(past));
+});
+
+router.get('/admin/newsletter/:id', (req, res) => {
+  const newsletter = db.getNewsletter(parseInt(req.params.id));
+  if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
+  const responses = db.getResponses(newsletter.id);
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
+});
+
 router.post('/admin/questions', (req, res) => {
   const questions = [].concat(req.body.question || []).map(q => q.trim()).filter(Boolean);
   db.saveQuestions(questions);
@@ -211,6 +367,13 @@ router.post('/admin/subscribers', (req, res) => {
   } catch (e) {
     res.status(400).send(errorPage(e.message));
   }
+});
+
+router.post('/admin/reset', (req, res) => {
+  const now = new Date();
+  const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+  db.resetNewsletter(newsletter.id);
+  res.redirect('/admin');
 });
 
 // ─── HTML templates ──────────────────────────────────────────────────────────
@@ -308,10 +471,11 @@ function tab(id,btn){
   document.getElementById('tc-'+id).classList.add('on');
 }
 </script>
+<p style="text-align:center;margin-top:24px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
 </body></html>`;
 }
 
-function thankYouPage(monthName, year) {
+function thankYouPage(monthName, year, formUrl) {
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thanks! — Friend Newsletter</title>
@@ -322,28 +486,39 @@ body{display:flex;align-items:center;justify-content:center;padding:16px}
 .emoji{font-size:64px;margin-bottom:24px}
 h1{font-size:26px;font-weight:700;color:#1f2937;margin-bottom:12px}
 p{color:#6b7280;font-size:15px;line-height:1.7}
+.edit-link{display:inline-block;margin-top:20px;color:#667eea;font-size:14px;font-weight:600;text-decoration:none}
 </style></head><body>
 <div class="card">
   <div class="emoji">🎉</div>
   <h1>Thanks for sharing!</h1>
   <p>Your ${monthName} ${year} update has been saved. It'll be compiled with everyone's responses and sent to the group on the last day of the month.</p>
+  ${formUrl ? `<a href="${esc(formUrl)}" class="edit-link">✏️ Edit your answers</a>` : ''}
 </div>
+<p style="text-align:center;margin-top:20px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
 </body></html>`;
 }
 
-function adminPage({ newsletter, responses, subscribers, questions }) {
+function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl, isAdmin }) {
   const monthName = MONTHS[newsletter.month - 1];
-  const responded = new Set(responses.map(r => r.email));
   const rate = subscribers.length ? Math.round((responses.length / subscribers.length) * 100) : 0;
 
   const subRows = subscribers.map(s => {
     const r = responses.find(r => r.email === s.email);
+    const status = r ? '<span class="badge-yes">✓ Responded</span>' : '<span class="badge-no">—</span>';
+    if (!isAdmin) return `
+    <tr>
+      <td>${esc(s.name)}</td>
+      <td>${esc(s.email)}</td>
+      <td>${status}</td>
+    </tr>`;
+    const formUrl = `${baseUrl}/form/${makeToken(newsletter.id, s.email)}`;
     return `
     <tr>
       <td>${esc(s.name)}</td>
       <td>${esc(s.email)}</td>
-      <td>${r ? '<span class="badge-yes">✓ Responded</span>' : '<span class="badge-no">—</span>'}</td>
+      <td>${status}</td>
       <td style="white-space:nowrap;">
+        <button class="copy-btn" data-url="${esc(formUrl)}" title="Copy form link">🔗</button>
         ${r ? `<a href="/admin/response/${r.id}" class="edit-btn">Edit</a>` : ''}
         <form method="POST" action="/admin/subscribers" style="display:inline">
           <input type="hidden" name="email" value="${esc(s.email)}">
@@ -365,14 +540,18 @@ function adminPage({ newsletter, responses, subscribers, questions }) {
     ? '<p style="color:#dc2626;font-size:14px;margin-bottom:12px;">⚠️ No questions yet — add one below.</p>'
     : '';
 
+  const questionsReadOnly = questions.length === 0
+    ? '<p style="color:#9ca3af;font-size:14px;">No questions set yet.</p>'
+    : questions.map((q, i) => `<p style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151;">${i + 1}. ${esc(q)}</p>`).join('');
+
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin — Friend Newsletter</title>
+<title>${isAdmin ? 'Admin — ' : ''}Friend Newsletter</title>
 <style>
 ${BASE_STYLE}
 body{padding:32px 16px}
 .wrap{max-width:820px;margin:0 auto}
-.hdr{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:28px 32px;color:#fff;margin-bottom:20px}
+.hdr{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:28px 32px;color:#fff;margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .hdr h1{font-size:22px;font-weight:700;margin-bottom:4px}
 .hdr p{opacity:.85;font-size:14px}
 .card{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:18px}
@@ -407,12 +586,19 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 .q-num{color:#9ca3af;font-size:13px;min-width:20px;text-align:right;flex-shrink:0}
 .q-row input{flex:1;padding:9px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;color:#1f2937}
 .q-row input:focus{outline:none;border-color:#667eea}
-.edit-btn{background:#e0e7ff;color:#4338ca;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;margin-right:6px;}
+.edit-btn{background:#e0e7ff;color:#4338ca;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;margin-right:4px;}
+.copy-btn{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:4px;}
+.copy-btn.copied{background:#d1fae5;color:#059669}
 </style></head><body>
 <div class="wrap">
   <div class="hdr">
-    <h1>📰 Friend Newsletter Admin</h1>
-    <p>${monthName} ${newsletter.year} · Newsletter #${newsletter.id}</p>
+    <div>
+      <h1>📰 Friend Newsletter${isAdmin ? ' Admin' : ''}</h1>
+      <p>${monthName} ${newsletter.year}${isAdmin ? ` · Newsletter #${newsletter.id}` : ''}</p>
+    </div>
+    ${isAdmin
+      ? `<a href="/admin/logout" style="color:rgba(255,255,255,.7);font-size:13px;text-decoration:none;margin-top:4px;white-space:nowrap;">Sign out →</a>`
+      : `<a href="/admin" style="color:rgba(255,255,255,.7);font-size:13px;text-decoration:none;margin-top:4px;white-space:nowrap;">Admin →</a>`}
   </div>
 
   <div class="card">
@@ -428,31 +614,36 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
     </div>
   </div>
 
+  ${isAdmin ? `
   <div class="card">
     <h2>Actions</h2>
     <div class="actions">
-      <button class="btn btn-p" onclick="act('send-form')">📧 Send Form Emails Now</button>
-      <button class="btn btn-s" onclick="act('send-results')">📰 Send Compiled Results Now</button>
+      <button class="btn btn-p" onclick="act('send-form')">📧 Send Form Emails</button>
+      <button class="btn btn-s" onclick="act('send-reminders')">⏰ Send Reminders</button>
+      <button class="btn btn-s" onclick="act('send-results')">📰 Send Compiled Results</button>
+      <button class="btn btn-s" onclick="act('send-test')" style="border:2px dashed #d1d5db;">🧪 Test: Send to Me</button>
     </div>
     <div id="log"></div>
-  </div>
+  </div>` : ''}
 
   <div class="card">
-    <h2>Subscribers <span style="font-weight:400;font-size:13px;color:#9ca3af">— saved to subscribers.csv</span></h2>
+    <h2>Subscribers</h2>
     <table>
-      <thead><tr><th>Name</th><th>Email</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Status</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
       <tbody>${subRows}</tbody>
     </table>
+    ${isAdmin ? `
     <form method="POST" action="/admin/subscribers" class="add-form">
       <input type="hidden" name="action" value="add">
       <input type="text" name="name" placeholder="Name" required>
       <input type="email" name="email" placeholder="email@example.com" required>
       <button type="submit" class="add-btn">+ Add</button>
-    </form>
+    </form>` : ''}
   </div>
 
   <div class="card">
-    <h2>Questions <span style="font-weight:400;font-size:13px;color:#9ca3af">— used when next month's form is sent</span></h2>
+    <h2>Questions${isAdmin ? ' <span style="font-weight:400;font-size:13px;color:#9ca3af">— used when next month\'s form is sent</span>' : ''}</h2>
+    ${isAdmin ? `
     ${newsletter.form_sent ? '<p style="margin-bottom:14px;color:#92400e;background:#fef3c7;border-radius:8px;padding:10px 14px;font-size:13px;">⚠️ This month\'s form was already sent — changes here apply to next month.</p>' : ''}
     <form method="POST" action="/admin/questions">
       ${noQuestions}
@@ -461,14 +652,29 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
         <button type="button" class="add-btn" onclick="addQuestion()">+ Add Question</button>
         <button type="submit" class="save-btn">Save Questions</button>
       </div>
-    </form>
+    </form>` : questionsReadOnly}
   </div>
-  <div style="text-align:center;padding:8px 0 16px;">
+
+  <div style="text-align:center;padding:8px 0 16px;display:flex;justify-content:center;gap:24px;flex-wrap:wrap;">
     <a href="/admin/responses" style="color:#667eea;font-size:14px;text-decoration:none;font-weight:600;">View this month's responses →</a>
+    <a href="/admin/past" style="color:#9ca3af;font-size:14px;text-decoration:none;font-weight:600;">Past newsletters →</a>
   </div>
-  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
+
+  ${isAdmin ? `
+  <details style="margin-bottom:24px;">
+    <summary style="cursor:pointer;font-size:13px;color:#9ca3af;text-align:center;list-style:none;user-select:none;">⚠️ Danger zone</summary>
+    <div class="card" style="margin-top:10px;border:2px solid #fee2e2;">
+      <h2 style="color:#dc2626;">Reset This Month</h2>
+      <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Deletes all <strong>${responses.length}</strong> response${responses.length !== 1 ? 's' : ''} for ${monthName} ${newsletter.year} and marks form &amp; results as unsent. <strong>This cannot be undone.</strong></p>
+      <form method="POST" action="/admin/reset" onsubmit="return confirm('Delete all ${responses.length} response(s) and reset ${monthName} ${newsletter.year}? This cannot be undone.')">
+        <button type="submit" class="btn" style="background:#dc2626;color:#fff;">🗑️ Reset ${monthName} Newsletter</button>
+      </form>
+    </div>
+  </details>
+  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>` : ''}
 </div>
 <script>
+${isAdmin ? `
 function addQuestion(){
   const list=document.getElementById('q-list');
   const n=list.children.length+1;
@@ -499,6 +705,15 @@ function act(action){
     log.appendChild(p);src.close();
   };
 }
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('.copy-btn');
+  if(!btn)return;
+  navigator.clipboard.writeText(btn.dataset.url).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='✓';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent=orig;btn.classList.remove('copied');},2000);
+  });
+});` : ''}
 </script>
 </body></html>`;
 }
@@ -594,6 +809,73 @@ function tab(id,btn){
   btn.classList.add('on');document.getElementById('tc-'+id).classList.add('on');
 }
 </script>
+</body></html>`;
+}
+
+function loginPage(error, next) {
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Login — Friend Newsletter</title>
+<style>
+${BASE_STYLE}
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.card{background:#fff;border-radius:16px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.hdr{background:linear-gradient(135deg,#667eea,#764ba2);padding:32px;text-align:center;color:#fff}
+.hdr h1{font-size:20px;font-weight:700;margin-bottom:4px}
+.hdr p{opacity:.8;font-size:13px}
+.body{padding:28px}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px}
+input[type=password]{width:100%;padding:11px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:15px;font-family:inherit}
+input:focus{outline:none;border-color:#667eea}
+.sub{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px}
+</style></head><body>
+<div class="card">
+  <div class="hdr"><h1>📰 Admin Login</h1><p>Friend Newsletter</p></div>
+  <div class="body">
+    ${error ? '<div class="err">⚠️ Incorrect password</div>' : ''}
+    <form method="POST" action="/admin/login">
+      <input type="hidden" name="next" value="${esc(next || '/admin')}">
+      <label for="pw">Password</label>
+      <input type="password" id="pw" name="password" autofocus required>
+      <button type="submit" class="sub">Sign In →</button>
+    </form>
+  </div>
+</div>
+</body></html>`;
+}
+
+function pastNewslettersPage(newsletters) {
+  const rows = newsletters.length === 0
+    ? '<p style="color:#9ca3af;text-align:center;padding:32px;">No past newsletters yet.</p>'
+    : newsletters.map(n => {
+        const monthName = MONTHS[n.month - 1];
+        return `
+<a href="/admin/newsletter/${n.id}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #f3f4f6;text-decoration:none;color:inherit;background:#fff;transition:background .1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">
+  <div>
+    <p style="margin:0;font-weight:600;color:#1f2937;font-size:15px;">${monthName} ${n.year}</p>
+    <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;">Newsletter #${n.id}</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    ${n.results_sent ? '<span style="background:#d1fae5;color:#059669;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;">Sent</span>' : '<span style="background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;">Not sent</span>'}
+    <span style="color:#9ca3af;font-size:16px;">→</span>
+  </div>
+</a>`;
+      }).join('');
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Past Newsletters — Admin</title>
+<style>${BASE_STYLE} body{padding:32px 16px} .wrap{max-width:620px;margin:0 auto}</style>
+</head><body>
+<div class="wrap">
+  <a href="/admin" style="display:inline-block;margin-bottom:20px;color:#667eea;font-size:14px;font-weight:600;text-decoration:none;">← Back to Admin</a>
+  <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px 16px 0 0;padding:24px 28px;color:#fff;">
+    <h1 style="margin:0;font-size:20px;font-weight:700;">Past Newsletters</h1>
+    <p style="margin:4px 0 0;opacity:.8;font-size:13px;">${newsletters.length} previous edition${newsletters.length !== 1 ? 's' : ''}</p>
+  </div>
+  <div style="background:#fff;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden;">${rows}</div>
+</div>
 </body></html>`;
 }
 

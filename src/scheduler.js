@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const db = require('./db');
-const { sendFormEmail, sendCompiledEmail } = require('./mailer');
+const { sendFormEmail, sendCompiledEmail, sendReminderEmail } = require('./mailer');
 
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
@@ -51,8 +51,31 @@ async function sendCompiledEmails(force = false) {
   return { message: msg, count: subscribers.length, responses: responses.length };
 }
 
+async function sendReminderEmails() {
+  const now = new Date();
+  const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+  const responses = db.getResponses(newsletter.id);
+  const respondedEmails = new Set(responses.map(r => r.email));
+  const subscribers = db.getSubscribers();
+  const pending = subscribers.filter(s => !respondedEmails.has(s.email));
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
+  if (!pending.length) {
+    return { message: 'Everyone has already responded — no reminders needed!', skipped: true };
+  }
+
+  console.log(`\nSending reminder emails to ${pending.length} non-responder(s)...`);
+
+  for (const sub of pending) {
+    await sendReminderEmail({ toEmail: sub.email, toName: sub.name, newsletter, baseUrl });
+  }
+
+  const msg = `Reminder emails sent to ${pending.length} non-responder(s)`;
+  console.log(msg);
+  return { message: msg, count: pending.length };
+}
+
 function startScheduler() {
-  // Runs daily at 9 AM
   cron.schedule('0 9 * * *', async () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -65,6 +88,10 @@ function startScheduler() {
         console.log('One week before month end — sending form emails');
         await sendFormEmails();
       }
+      if (day === last - 2) {
+        console.log('Two days before month end — sending reminder emails to non-responders');
+        await sendReminderEmails();
+      }
       if (day === last) {
         console.log('Last day of month — sending compiled newsletter');
         await sendCompiledEmails();
@@ -74,7 +101,7 @@ function startScheduler() {
     }
   });
 
-  console.log('Scheduler running — form emails sent a week before month end, results on the last day.');
+  console.log('Scheduler running — form emails 1 week before month end, reminders 2 days before, results on the last day.');
 }
 
-module.exports = { startScheduler, sendFormEmails, sendCompiledEmails };
+module.exports = { startScheduler, sendFormEmails, sendCompiledEmails, sendReminderEmails };

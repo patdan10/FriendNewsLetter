@@ -168,6 +168,10 @@ module.exports = {
     return load().responses.find(r => r.newsletter_id === newsletterId && r.email === email) || null;
   },
 
+  getAllNewsletters() {
+    return load().newsletters.slice().sort((a, b) => b.year - a.year || b.month - a.month);
+  },
+
   getResponseById(id) {
     return load().responses.find(r => r.id === id) || null;
   },
@@ -179,6 +183,16 @@ module.exports = {
       r.image_url = imageUrl || null;
       r.image_filename = imageFilename !== undefined ? imageFilename : r.image_filename;
       r.links = links || [];
+    });
+  },
+
+  resetNewsletter(id) {
+    withDb(db => {
+      const nl = db.newsletters.find(n => n.id === id);
+      if (!nl) return;
+      nl.form_sent = false;
+      nl.results_sent = false;
+      db.responses = db.responses.filter(r => r.newsletter_id !== id);
     });
   }
 };
