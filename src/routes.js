@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { parseToken } = require('./mailer');
+const { parseToken, sendFormEmail, sendCompiledEmail } = require('./mailer');
 const { sendFormEmails, sendCompiledEmails } = require('./scheduler');
 
 const router = express.Router();
@@ -100,6 +100,66 @@ router.post('/admin/send-results', async (req, res) => {
   } catch (e) {
     res.json({ success: false, error: e.message });
   }
+});
+
+function sseStream(res, fn) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  const emit = (type, text) => res.write(`data: ${JSON.stringify({ type, text })}\n\n`);
+  fn(emit).catch(e => emit('err', 'Fatal: ' + e.message)).finally(() => res.end());
+}
+
+router.get('/admin/send-form/stream', (req, res) => {
+  sseStream(res, async (emit) => {
+    const now = new Date();
+    const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const subscribers = db.getSubscribers();
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
+    emit('info', `Newsletter #${newsletter.id} · ${subscribers.length} subscriber(s)`);
+    if (newsletter.form_sent) emit('warn', 'Note: form emails already sent this month — resending anyway');
+
+    let ok = 0, fail = 0;
+    for (const sub of subscribers) {
+      emit('sending', `→ ${sub.name} <${sub.email}>`);
+      try {
+        await sendFormEmail({ toEmail: sub.email, toName: sub.name, newsletter, baseUrl });
+        ok++; emit('ok', `✓ ${sub.email}`);
+      } catch (e) {
+        fail++; emit('err', `✗ ${sub.email}: ${e.message}`);
+      }
+    }
+    db.markFormSent(newsletter.id);
+    emit('done', `Done — ${ok} sent${fail ? `, ${fail} failed` : ''}`);
+  });
+});
+
+router.get('/admin/send-results/stream', (req, res) => {
+  sseStream(res, async (emit) => {
+    const now = new Date();
+    const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const subscribers = db.getSubscribers();
+    const responses = db.getResponses(newsletter.id);
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
+    emit('info', `Newsletter #${newsletter.id} · ${responses.length} response(s) · sending to ${subscribers.length} subscriber(s)`);
+
+    let ok = 0, fail = 0;
+    for (const sub of subscribers) {
+      emit('sending', `→ ${sub.name} <${sub.email}>`);
+      try {
+        await sendCompiledEmail({ toEmail: sub.email, toName: sub.name, newsletter, responses, baseUrl });
+        ok++; emit('ok', `✓ ${sub.email}`);
+      } catch (e) {
+        fail++; emit('err', `✗ ${sub.email}: ${e.message}`);
+      }
+    }
+    db.markResultsSent(newsletter.id);
+    emit('done', `Done — ${ok} sent${fail ? `, ${fail} failed` : ''}`);
+  });
 });
 
 router.post('/admin/questions', (req, res) => {
@@ -292,9 +352,8 @@ body{padding:32px 16px}
 .btn-p{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
 .btn-s{background:#f3f4f6;color:#374151}
 .btn:hover{opacity:.85}
-#msg{margin-top:14px;padding:10px 14px;border-radius:8px;font-size:14px;display:none}
-.msg-ok{background:#d1fae5;color:#059669}
-.msg-err{background:#fee2e2;color:#dc2626}
+#log{display:none;background:#0f172a;border-radius:10px;padding:14px 16px;margin-top:14px;font-family:'Cascadia Code','Consolas',monospace;font-size:13px;max-height:220px;overflow-y:auto;line-height:1.6}
+.ll{margin:0}.li{color:#93c5fd}.ls{color:#cbd5e1}.lo{color:#6ee7b7}.le{color:#fca5a5}.lw{color:#fde68a}.ld{color:#fbbf24;font-weight:700;margin-top:4px}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #f3f4f6;font-size:14px}
 th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
@@ -336,8 +395,7 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
       <button class="btn btn-p" onclick="act('send-form')">📧 Send Form Emails Now</button>
       <button class="btn btn-s" onclick="act('send-results')">📰 Send Compiled Results Now</button>
     </div>
-    <div id="msg"></div>
-    <p style="margin-top:14px;color:#9ca3af;font-size:13px;">When using Ethereal test email, preview URLs are logged to the console after sending.</p>
+    <div id="log"></div>
   </div>
 
   <div class="card">
@@ -379,16 +437,24 @@ function rmQuestion(btn){
   btn.parentElement.remove();
   document.querySelectorAll('.q-num').forEach((el,i)=>el.textContent=(i+1)+'.');
 }
-async function act(action){
-  const msg=document.getElementById('msg');
-  msg.style.display='block';msg.className='';msg.textContent='Sending…';
-  try{
-    const r=await fetch('/admin/'+action,{method:'POST'});
-    const d=await r.json();
-    if(d.success){msg.className='msg-ok';msg.textContent='✓ '+d.message+' — check console for preview URLs';}
-    else{msg.className='msg-err';msg.textContent='✗ '+d.error;}
-    setTimeout(()=>location.reload(),4000);
-  }catch(e){msg.className='msg-err';msg.textContent='✗ '+e.message;}
+function act(action){
+  const log=document.getElementById('log');
+  log.innerHTML='';log.style.display='block';
+  const cls={info:'li',sending:'ls',ok:'lo',err:'le',warn:'lw',done:'ld'};
+  const src=new EventSource('/admin/'+action+'/stream');
+  src.onmessage=e=>{
+    const {type,text}=JSON.parse(e.data);
+    const p=document.createElement('p');
+    p.className='ll '+(cls[type]||'ls');
+    p.textContent=text;
+    log.appendChild(p);
+    log.scrollTop=log.scrollHeight;
+    if(type==='done'){src.close();setTimeout(()=>location.reload(),2500);}
+  };
+  src.onerror=()=>{
+    const p=document.createElement('p');p.className='ll le';p.textContent='Connection lost';
+    log.appendChild(p);src.close();
+  };
 }
 </script>
 </body></html>`;
