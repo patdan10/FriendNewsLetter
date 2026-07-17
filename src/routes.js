@@ -709,10 +709,8 @@ var _mhits=[],_mTimer=null,_mSeq=0;
 function musicInput(val){
   clearTimeout(_mTimer);
   var q=val.trim();
-  setMusicStatus('');
-  document.getElementById('music-results').innerHTML='';
-  if(!q){return;}
-  if(q.length<2){setMusicStatus('Keep typing...');return;}
+  if(!q){setMusicStatus('');document.getElementById('music-results').innerHTML='';return;}
+  if(q.length<2){setMusicStatus('Keep typing...');document.getElementById('music-results').innerHTML='';return;}
   setMusicStatus('Searching...');
   _mTimer=setTimeout(function(){musicSearch(q);},380);
 }
