@@ -18,7 +18,7 @@ async function sendViaBrevo({ fromName, fromEmail, toEmail, toName, subject, htm
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || JSON.stringify(data));
-  console.log(`  📬 ${toEmail}: sent`);
+  console.log(`  ${toEmail}: sent`);
   return data;
 }
 
@@ -26,7 +26,7 @@ let etherealTransporter;
 async function sendViaEthereal({ from, to, subject, html }) {
   if (!etherealTransporter) {
     const testAccount = await nodemailer.createTestAccount();
-    console.log('\n📧 Ethereal test account:');
+    console.log('\nEthereal test account:');
     console.log(`   Preview: https://ethereal.email/messages`);
     console.log(`   Login:   ${testAccount.user} / ${testAccount.pass}\n`);
     etherealTransporter = nodemailer.createTransport({
@@ -36,7 +36,7 @@ async function sendViaEthereal({ from, to, subject, html }) {
   }
   const info = await etherealTransporter.sendMail({ from, to, subject, html });
   const preview = nodemailer.getTestMessageUrl(info);
-  if (preview) console.log(`  📬 ${to}: ${preview}`);
+  if (preview) console.log(`  ${to}: ${preview}`);
   return info;
 }
 
@@ -97,7 +97,7 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Everyone's responses get compiled and sent out at the end of the month.</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times</p>
 </td></tr>
 </table>
 </td></tr>
@@ -147,7 +147,7 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
     const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
     const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
     const linksHtml = r.links?.length
-      ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">🔗 ${esc(l.label || l.url)}</a>`).join('')
+      ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')
       : '';
     return `
 <div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
@@ -159,7 +159,7 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
   const mediaSection = mediaRows ? `
 <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
   <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
-    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">📸 Photos &amp; Links</p>
+    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Photos &amp; Links</p>
   </div>
   <div style="padding:4px 20px 6px;">${mediaRows}</div>
 </div>` : '';
@@ -176,8 +176,8 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 </td></tr>
 <tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-  ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">✏️ Update your response</a></p>` : ''}
-  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · ${monthName} ${year} · Sent with ❤️</p>
+  ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">Update your response</a></p>` : ''}
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · ${monthName} ${year}</p>
 </td></tr>
 </table>
 </td></tr>
@@ -188,7 +188,7 @@ async function sendFormEmail({ toEmail, toName, newsletter, baseUrl }) {
   const token = makeToken(newsletter.id, toEmail);
   return deliver({
     toEmail, toName,
-    subject: `📝 ${MONTHS[newsletter.month - 1]} ${newsletter.year} - Share your update!`,
+    subject: `${MONTHS[newsletter.month - 1]} ${newsletter.year} - Share your update!`,
     html: buildFormEmail({ name: toName, month: newsletter.month, year: newsletter.year, questions: newsletter.questions, formUrl: `${baseUrl}/form/${token}` })
   });
 }
@@ -198,7 +198,7 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   const editUrl = `${baseUrl}/form/${token}`;
   return deliver({
     toEmail, toName,
-    subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
+    subject: `${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
     html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl })
   });
 }
@@ -211,19 +211,19 @@ function buildReminderEmail({ name, month, year, formUrl }) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
 <tr><td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:40px;text-align:center;">
-  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">⏰ Friendly Reminder</h1>
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">Friendly Reminder</h1>
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year} Newsletter</p>
 </td></tr>
 <tr><td style="padding:40px;">
   <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)}!</p>
-  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">The ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong> - still time to fill it out if you haven't yet!</p>
+  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">The ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong> - still time to fill it out if you haven't!</p>
   <div style="text-align:center;margin-bottom:32px;">
-    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out your update</a>
+    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">Fill out your update</a>
   </div>
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No worries if you're swamped - just didn't want you to miss it.</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times</p>
 </td></tr>
 </table>
 </td></tr>
@@ -234,7 +234,7 @@ async function sendReminderEmail({ toEmail, toName, newsletter, baseUrl }) {
   const token = makeToken(newsletter.id, toEmail);
   return deliver({
     toEmail, toName,
-    subject: `⏰ Reminder: ${MONTHS[newsletter.month - 1]} newsletter goes out in 2 days!`,
+    subject: `Reminder: ${MONTHS[newsletter.month - 1]} newsletter goes out in 2 days`,
     html: buildReminderEmail({ name: toName, month: newsletter.month, year: newsletter.year, formUrl: `${baseUrl}/form/${token}` })
   });
 }
@@ -248,7 +248,7 @@ async function sendAdminNotification({ responderName, newsletter, baseUrl }) {
   return deliver({
     toEmail: adminEmail,
     toName: 'Admin',
-    subject: `🎉 ${responderName} submitted their ${monthName} response`,
+    subject: `${responderName} submitted their ${monthName} response`,
     html: `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Arial,sans-serif;padding:40px;max-width:500px;margin:0 auto;">
 <h2 style="color:#1f2937;">New response submitted!</h2>
 <p style="color:#374151;font-size:16px;margin:16px 0;"><strong>${esc(responderName)}</strong> just filled out the ${monthName} ${newsletter.year} newsletter form.</p>
