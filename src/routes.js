@@ -526,50 +526,6 @@ async function getSpotifyToken() {
   } catch { return null; }
 }
 
-function timedFetch(url, opts, ms) {
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), ms);
-  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(t));
-}
-
-router.get('/api/music-search', async (req, res) => {
-  const q = (req.query.q || '').trim();
-  if (q.length < 2) return res.json({ results: [] });
-  const UA = 'Mozilla/5.0 (compatible; FriendNewsletter/2.0)';
-  const opts = { headers: { 'User-Agent': UA } };
-
-  // Try iTunes first (3s timeout)
-  try {
-    const r = await timedFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`, opts, 3000);
-    if (r.ok) {
-      const d = await r.json();
-      const results = (d.results || []).map(t => ({
-        title: t.trackName,
-        artist: t.artistName,
-        album: t.collectionName || '',
-        image: (t.artworkUrl100 || '').replace('100x100bb', '300x300bb').replace('100x100', '200x200')
-      }));
-      if (results.length) return res.json({ results });
-    }
-  } catch (e) { console.error('iTunes search failed:', e.message); }
-
-  // Fallback: Deezer (3s timeout)
-  try {
-    const r = await timedFetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=8`, opts, 3000);
-    if (r.ok) {
-      const d = await r.json();
-      const results = (d.data || []).map(t => ({
-        title: t.title,
-        artist: t.artist?.name || '',
-        album: t.album?.title || '',
-        image: t.album?.cover_medium || ''
-      }));
-      return res.json({ results });
-    }
-  } catch (e) { console.error('Deezer search failed:', e.message); }
-
-  res.json({ results: [] });
-});
 
 // ─── HTML templates ──────────────────────────────────────────────────────────
 
@@ -734,33 +690,44 @@ function musicInput(val){
   setMusicStatus('Searching...');
   _mTimer=setTimeout(function(){musicSearch(q);},380);
 }
+function musicRender(hits){
+  if(!hits.length){document.getElementById('music-results').innerHTML='<p class="mres-msg">No results. Try a different search.</p>';return;}
+  var out='';
+  hits.forEach(function(r,i){
+    out+='<div class="mres-item" tabindex="0" onclick="musicPick('+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();musicPick('+i+');}">'
+      +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=\'0\'">'
+      +'<div class="mres-info">'
+      +'<p class="mres-title">'+mesc(r.title)+'</p>'
+      +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' \xb7 '+mesc(r.album):'')+'</p>'
+      +'</div></div>';
+  });
+  document.getElementById('music-results').innerHTML=out;
+}
 function musicSearch(q){
   var seq=++_mSeq;
-  fetch('/api/music-search?q='+encodeURIComponent(q))
+  fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8')
     .then(function(r){return r.json();})
     .then(function(d){
       if(seq!==_mSeq)return;
       setMusicStatus('');
-      _mhits=d.results||[];
-      if(!_mhits.length){
-        document.getElementById('music-results').innerHTML='<p class="mres-msg">No results. Try a different search.</p>';
-        return;
-      }
-      var out='';
-      _mhits.forEach(function(r,i){
-        out+='<div class="mres-item" tabindex="0" onclick="musicPick('+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();musicPick('+i+');}">'
-          +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=\'0\'">'
-          +'<div class="mres-info">'
-          +'<p class="mres-title">'+mesc(r.title)+'</p>'
-          +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' · '+mesc(r.album):'')+'</p>'
-          +'</div></div>';
-      });
-      document.getElementById('music-results').innerHTML=out;
+      _mhits=(d.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb').replace('100x100','200x200')};});
+      musicRender(_mhits);
     })
     .catch(function(){
       if(seq!==_mSeq)return;
-      setMusicStatus('');
-      document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
+      fetch('https://api.deezer.com/search?q='+encodeURIComponent(q)+'&limit=8')
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(seq!==_mSeq)return;
+          setMusicStatus('');
+          _mhits=(d.data||[]).map(function(t){return{title:t.title,artist:t.artist&&t.artist.name||'',album:t.album&&t.album.title||'',image:t.album&&t.album.cover_medium||''};});
+          musicRender(_mhits);
+        })
+        .catch(function(){
+          if(seq!==_mSeq)return;
+          setMusicStatus('');
+          document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
+        });
     });
 }
 function musicPick(i){
