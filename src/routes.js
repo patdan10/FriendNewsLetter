@@ -5,7 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail } = require('./mailer');
+const { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification } = require('./mailer');
 const { sendFormEmails, sendCompiledEmails } = require('./scheduler');
 
 const router = express.Router();
@@ -350,8 +350,9 @@ router.get('/admin/newsletter/:id', (req, res) => {
   const newsletter = db.getNewsletter(parseInt(req.params.id));
   if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
   const responses = db.getResponses(newsletter.id);
+  const comments = db.getComments(newsletter.id);
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
+  res.send(newsletterViewPage({ newsletter, responses, comments, token: null, viewerName: '', isAdmin: true, baseUrl }));
 });
 
 router.get('/past', (req, res) => {
@@ -366,13 +367,77 @@ router.get('/past', (req, res) => {
 router.get('/newsletter/:id', (req, res) => {
   const newsletter = db.getNewsletter(parseInt(req.params.id));
   if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
-  const now = new Date();
-  if (newsletter.year === now.getFullYear() && newsletter.month === now.getMonth() + 1) {
-    return res.status(403).send(errorPage('This month\'s newsletter hasn\'t been sent yet'));
-  }
+  if (!newsletter.results_sent) return res.status(403).send(errorPage('This newsletter hasn\'t been published yet'));
   const responses = db.getResponses(newsletter.id);
+  const comments = db.getComments(newsletter.id);
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
+  const token = req.query.token || null;
+  let viewerName = '';
+  if (token) {
+    try {
+      const { newsletterId, email } = parseToken(token);
+      if (newsletterId === newsletter.id) {
+        const sub = db.getSubscribers().find(s => s.email === email);
+        viewerName = sub?.name || email;
+      }
+    } catch {}
+  }
+  res.send(newsletterViewPage({ newsletter, responses, comments, token, viewerName, isAdmin: false, baseUrl }));
+});
+
+router.post('/newsletter/:id/comment', (req, res) => {
+  try {
+    const newsletterId = parseInt(req.params.id);
+    const newsletter = db.getNewsletter(newsletterId);
+    if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
+    if (!newsletter.results_sent) return res.status(403).send(errorPage('Newsletter not published yet'));
+
+    const { author_name, text, response_id, question_index, parent_id, token } = req.body;
+    if (!author_name?.trim() || !text?.trim()) return res.status(400).send(errorPage('Name and comment text are required'));
+
+    let authorEmail = null;
+    if (token) {
+      try {
+        const parsed = parseToken(token);
+        if (parsed.newsletterId === newsletterId) authorEmail = parsed.email;
+      } catch {}
+    }
+
+    const allComments = db.getComments(newsletterId);
+    const parentComment = parent_id ? allComments.find(c => c.id === parseInt(parent_id)) : null;
+
+    db.addComment({
+      newsletterId,
+      responseId: parseInt(response_id),
+      questionIndex: parseInt(question_index),
+      parentId: parent_id ? parseInt(parent_id) : null,
+      authorName: author_name.trim(),
+      authorEmail,
+      text: text.trim()
+    });
+
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const subscribers = db.getSubscribers();
+    const response = db.getResponses(newsletterId).find(r => r.id === parseInt(response_id));
+    const questionText = (newsletter.questions || [])[parseInt(question_index)] || '';
+    sendCommentNotification({
+      subscribers,
+      commenterEmail: authorEmail,
+      commenterName: author_name.trim(),
+      commentText: text.trim(),
+      questionText,
+      responderName: response?.name || '',
+      newsletter,
+      baseUrl,
+      parentCommentAuthor: parentComment?.author_name || null
+    }).catch(e => console.error('Comment notification error:', e));
+
+    const redirectToken = token ? `?token=${encodeURIComponent(token)}` : '';
+    res.redirect(`/newsletter/${newsletterId}${redirectToken}#q${question_index}-r${response_id}`);
+  } catch (e) {
+    console.error(e);
+    res.status(500).send(errorPage('Error posting comment: ' + e.message));
+  }
 });
 
 router.post('/questions', (req, res) => {
@@ -864,6 +929,144 @@ function tab(id,btn){
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
   btn.classList.add('on');document.getElementById('tc-'+id).classList.add('on');
 }
+</script>
+</body></html>`;
+}
+
+function newsletterViewPage({ newsletter, responses, comments, token, viewerName, isAdmin, baseUrl }) {
+  const monthName = MONTHS[newsletter.month - 1];
+  const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return ''; }
+  }
+
+  function commentFormHtml({ responseId, questionIndex, parentId, placeholder }) {
+    return `<form method="POST" action="/newsletter/${newsletter.id}/comment" class="c-form">
+      <input type="hidden" name="response_id" value="${responseId}">
+      <input type="hidden" name="question_index" value="${questionIndex}">
+      ${parentId != null ? `<input type="hidden" name="parent_id" value="${parentId}">` : ''}
+      ${token ? `<input type="hidden" name="token" value="${esc(token)}">` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" name="author_name" value="${esc(viewerName)}" placeholder="Your name" required class="c-name">
+        <button type="submit" class="c-submit">Post</button>
+      </div>
+      <textarea name="text" placeholder="${placeholder || 'Add a comment...'}" required rows="2" class="c-text"></textarea>
+    </form>`;
+  }
+
+  function renderThread(threadComments, parentId, depth) {
+    const children = threadComments.filter(c => c.parent_id === parentId);
+    if (!children.length) return '';
+    return children.map(c => {
+      const subReplies = renderThread(threadComments, c.id, depth + 1);
+      const replyId = `rf-${c.id}`;
+      return `<div class="comment${depth > 0 ? ' c-reply' : ''}">
+  <div class="c-meta">
+    <strong>${esc(c.author_name)}</strong>
+    <span class="c-time">${fmtDate(c.created_at)}</span>
+  </div>
+  <p class="c-body">${esc(c.text)}</p>
+  <button type="button" class="reply-toggle" onclick="toggleEl('${replyId}')">Reply</button>
+  <div id="${replyId}" style="display:none;margin-top:8px;">
+    ${commentFormHtml({ responseId: c.response_id, questionIndex: c.question_index, parentId: c.id, placeholder: `Reply to ${esc(c.author_name)}...` })}
+  </div>
+  ${subReplies ? `<div class="c-children">${subReplies}</div>` : ''}
+</div>`;
+    }).join('');
+  }
+
+  const qSections = (newsletter.questions || []).map((q, qi) => {
+    const answersForQ = responses.map(r => ({ r, text: (r.answers || [])[qi]?.trim() })).filter(a => a.text);
+    if (!answersForQ.length) return '';
+    const blocks = answersForQ.map(({ r, text }) => {
+      const h = personHue(r.name || r.email);
+      const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === qi);
+      const addId = `add-${r.id}-${qi}`;
+      return `<div class="answer-block" id="q${qi}-r${r.id}">
+  <p class="person-tag" style="color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>
+  <p class="answer-text">${esc(text)}</p>
+  ${threadComments.length ? `<div class="thread">${renderThread(threadComments, null, 0)}</div>` : ''}
+  <button type="button" class="add-comment-btn" onclick="toggleEl('${addId}')">+ Comment</button>
+  <div id="${addId}" style="display:none;margin-top:8px;">
+    ${commentFormHtml({ responseId: r.id, questionIndex: qi })}
+  </div>
+</div>`;
+    }).join('');
+    return `<div class="card"><h2 class="q-label">${qi + 1}. ${esc(q)}</h2>${blocks}</div>`;
+  }).join('');
+
+  // Media section
+  function musicEmbedLocal(url) {
+    if (!url) return null;
+    const sp = url.match(/open\.spotify\.com\/(track|album|playlist|show|episode)\/([^?&/]+)/);
+    if (sp) return `https://open.spotify.com/embed/${sp[1]}/${sp[2]}`;
+    if (/music\.apple\.com\//.test(url)) return url.replace('music.apple.com', 'embed.music.apple.com');
+    return null;
+  }
+  const mediaResps = responses.filter(r => r.image_filename || r.image_url || r.links?.length || r.music_url);
+  const mediaRows = mediaResps.map((r, i) => {
+    const h = personHue(r.name || r.email);
+    const last = i === mediaResps.length - 1;
+    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
+    const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
+    const linksHtml = r.links?.length ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('') : '';
+    const embedUrl = musicEmbedLocal(r.music_url);
+    const musicHtml = embedUrl ? `<div style="margin-top:8px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>` : '';
+    return `<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}"><p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>${imgHtml}${linksHtml}${musicHtml}</div>`;
+  }).join('');
+  const mediaSection = mediaRows ? `<div class="card"><h2>Photos, Links &amp; Music</h2>${mediaRows}</div>` : '';
+
+  const backUrl = isAdmin ? '/admin/past' : '/past';
+  const backLabel = isAdmin ? '← Back to Admin' : '← Back';
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${monthName} ${newsletter.year} — The Horseback Times</title>
+<style>
+${BASE_STYLE}
+body{padding:32px 16px}
+.wrap{max-width:740px;margin:0 auto}
+.hdr{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:28px 32px;color:#fff;margin-bottom:20px}
+.hdr h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.hdr p{opacity:.85;font-size:14px}
+.card{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:18px}
+.card h2{font-size:15px;font-weight:700;color:#374151;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #f3f4f6}
+.q-label{font-size:16px;color:#1f2937}
+.answer-block{padding:16px 0;border-bottom:1px solid #f3f4f6}
+.answer-block:last-of-type{border-bottom:none;padding-bottom:0}
+.person-tag{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:0 0 6px}
+.answer-text{margin:0 0 12px;color:#374151;font-size:15px;line-height:1.7;white-space:pre-wrap}
+.thread{margin:0 0 8px}
+.comment{padding:8px 0 4px;border-top:1px solid #f3f4f6}
+.c-children{margin-left:16px;border-left:2px solid #f3f4f6;padding-left:12px;margin-top:4px}
+.c-meta{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.c-meta strong{font-size:13px;color:#1f2937}
+.c-time{font-size:11px;color:#9ca3af}
+.c-body{margin:0 0 4px;color:#374151;font-size:14px;line-height:1.5}
+.reply-toggle{background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:0}
+.reply-toggle:hover{color:#667eea}
+.add-comment-btn{background:none;border:none;color:#667eea;font-size:13px;cursor:pointer;padding:4px 0;font-weight:600}
+.c-form{display:flex;flex-direction:column;gap:6px;background:#f9fafb;border-radius:10px;padding:12px}
+.c-name{flex:1;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;min-width:120px}
+.c-text{padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical}
+.c-name:focus,.c-text:focus{outline:none;border-color:#667eea}
+.c-submit{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.c-submit:hover{opacity:.9}
+.back-link{display:inline-block;margin-bottom:20px;color:#667eea;font-size:14px;font-weight:600;text-decoration:none}
+</style></head><body>
+<div class="wrap">
+  <a href="${backUrl}" class="back-link">${backLabel}</a>
+  <div class="hdr">
+    <h1>The Horseback Times</h1>
+    <p>${monthName} ${newsletter.year} Edition · ${responses.length} response${responses.length !== 1 ? 's' : ''} · ${comments.length} comment${comments.length !== 1 ? 's' : ''}</p>
+  </div>
+  ${qSections || '<div class="card"><p style="color:#9ca3af;text-align:center;">No questions this month.</p></div>'}
+  ${mediaSection}
+  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
+</div>
+<script>
+function toggleEl(id){const el=document.getElementById(id);if(el)el.style.display=el.style.display==='none'?'block':'none';}
 </script>
 </body></html>`;
 }

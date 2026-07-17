@@ -118,7 +118,7 @@ function musicServiceName(url) {
   return 'Music';
 }
 
-function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUrl, isEmail = false }) {
+function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUrl, viewUrl, isEmail = false }) {
   const monthName = MONTHS[month - 1];
 
   const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
@@ -197,6 +197,7 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 <tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">Update your response</a></p>` : ''}
+  ${viewUrl ? `<p style="margin:0 0 8px;"><a href="${viewUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">View &amp; comment online</a></p>` : ''}
   <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · ${monthName} ${year}</p>
 </td></tr>
 </table>
@@ -216,10 +217,11 @@ async function sendFormEmail({ toEmail, toName, newsletter, baseUrl }) {
 async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseUrl }) {
   const token = makeToken(newsletter.id, toEmail);
   const editUrl = `${baseUrl}/form/${token}`;
+  const viewUrl = `${baseUrl}/newsletter/${newsletter.id}?token=${token}`;
   return deliver({
     toEmail, toName,
     subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
-    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl, isEmail: true })
+    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl, viewUrl, isEmail: true })
   });
 }
 
@@ -277,4 +279,50 @@ async function sendAdminNotification({ responderName, newsletter, baseUrl }) {
   });
 }
 
-module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail };
+function buildCommentEmail({ toName, commenterName, commentText, questionText, responderName, monthName, year, viewUrl, parentCommentAuthor }) {
+  const context = parentCommentAuthor
+    ? `replied to ${esc(parentCommentAuthor)}'s comment`
+    : `commented on ${esc(responderName)}'s answer`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 0;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+<tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:32px 40px;text-align:center;">
+  <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">New comment</h1>
+  <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">The Horseback Times · ${monthName} ${year}</p>
+</td></tr>
+<tr><td style="padding:32px 40px;">
+  <p style="margin:0 0 16px;color:#1f2937;font-size:15px;">Hey ${esc(toName)}!</p>
+  <p style="margin:0 0 20px;color:#6b7280;font-size:15px;line-height:1.6;"><strong style="color:#1f2937;">${esc(commenterName)}</strong> ${context}${questionText ? ` to "${esc(questionText)}"` : ''}:</p>
+  <div style="background:#f9fafb;border-left:3px solid #667eea;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:24px;">
+    <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${esc(commentText)}</p>
+  </div>
+  <div style="text-align:center;">
+    <a href="${esc(viewUrl)}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:13px 32px;border-radius:50px;font-size:15px;font-weight:600;">View &amp; reply</a>
+  </div>
+</td></tr>
+<tr><td style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times</p>
+</td></tr>
+</table>
+</td></tr>
+</table></body></html>`;
+}
+
+async function sendCommentNotification({ subscribers, commenterEmail, commenterName, commentText, questionText, responderName, newsletter, baseUrl, parentCommentAuthor }) {
+  const monthName = MONTHS[newsletter.month - 1];
+  const notify = commenterEmail ? subscribers.filter(s => s.email !== commenterEmail) : subscribers;
+  for (const sub of notify) {
+    const token = makeToken(newsletter.id, sub.email);
+    const viewUrl = `${baseUrl}/newsletter/${newsletter.id}?token=${token}`;
+    deliver({
+      toEmail: sub.email,
+      toName: sub.name,
+      subject: `💬 ${commenterName} commented on the ${monthName} ${newsletter.year} newsletter`,
+      html: buildCommentEmail({ toName: sub.name, commenterName, commentText, questionText, responderName, monthName, year: newsletter.year, viewUrl, parentCommentAuthor })
+    }).catch(e => console.error(`Comment notification failed for ${sub.email}:`, e.message));
+  }
+}
+
+module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification };

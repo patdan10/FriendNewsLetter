@@ -62,7 +62,7 @@ function writeCSV(file, headers, rows) {
 
 // ─── JSON db (responses + newsletter state only) ──────────────────────────────
 
-const DEFAULT_DB = { newsletters: [], responses: [], _nextId: { newsletter: 1, response: 1 } };
+const DEFAULT_DB = { newsletters: [], responses: [], comments: [], _nextId: { newsletter: 1, response: 1, comment: 1 } };
 
 function load() {
   if (!fs.existsSync(DB_FILE)) { save(DEFAULT_DB); return DEFAULT_DB; }
@@ -186,6 +186,32 @@ module.exports = {
       r.links = links || [];
       r.music_url = musicUrl || null;
     });
+  },
+
+  getComments(newsletterId) {
+    const db = load();
+    return (db.comments || []).filter(c => c.newsletter_id === newsletterId);
+  },
+
+  addComment({ newsletterId, responseId, questionIndex, parentId, authorName, authorEmail, text }) {
+    let comment;
+    withDb(db => {
+      if (!db.comments) db.comments = [];
+      if (!db._nextId.comment) db._nextId.comment = 1;
+      comment = {
+        id: db._nextId.comment++,
+        newsletter_id: newsletterId,
+        response_id: responseId,
+        question_index: questionIndex != null ? Number(questionIndex) : null,
+        parent_id: parentId != null ? Number(parentId) : null,
+        author_name: authorName,
+        author_email: authorEmail || null,
+        text,
+        created_at: new Date().toISOString()
+      };
+      db.comments.push(comment);
+    });
+    return comment;
   },
 
   resetNewsletter(id) {
