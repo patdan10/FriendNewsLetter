@@ -380,12 +380,9 @@ router.get('/admin/newsletter/:id', (req, res) => {
 });
 
 router.get('/past', (req, res) => {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
   const all = db.getAllNewsletters();
-  const past = all.filter(n => !(n.year === currentYear && n.month === currentMonth));
-  res.send(pastNewslettersPage(past, false));
+  const published = all.filter(n => n.results_sent);
+  res.send(pastNewslettersPage(published, false));
 });
 
 router.get('/newsletter/:id', (req, res) => {
@@ -1189,7 +1186,7 @@ function pastNewslettersPage(newsletters, isAdmin) {
   const detailBase = isAdmin ? '/admin/newsletter' : '/newsletter';
 
   const rows = newsletters.length === 0
-    ? '<p style="color:#9ca3af;text-align:center;padding:32px;">No past newsletters yet.</p>'
+    ? '<p style="color:#9ca3af;text-align:center;padding:32px;">No newsletters published yet.</p>'
     : newsletters.map(n => {
         const monthName = MONTHS[n.month - 1];
         return `
