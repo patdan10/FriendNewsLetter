@@ -619,11 +619,14 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .mpick-change:hover{background:#ddd6fe}
 .mpick-remove{background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px;white-space:nowrap}
 .mpick-remove:hover{color:#ef4444}
+.upload-btn{display:inline-flex;align-items:center;gap:8px;background:#fff;border:2px dashed #d1d5db;border-radius:10px;padding:12px 20px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
+.upload-btn:hover{border-color:#667eea;background:#f5f3ff;color:#667eea}
+.upload-count{font-size:13px;color:#6b7280;margin-top:6px}
 .img-thumb-wrap{position:relative;width:100px;height:100px;border-radius:8px;background:#f3f4f6;flex-shrink:0;overflow:hidden}
-.img-thumb{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s}
+.img-thumb{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .15s}
 .img-thumb.loaded{opacity:1}
-.img-thumb-spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#667eea;border-radius:50%;animation:img-spin .8s linear infinite}
-@keyframes img-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.img-thumb-spin{position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #e5e7eb;border-top-color:#667eea;border-radius:50%;animation:img-spin .8s linear infinite}
+@keyframes img-spin{to{transform:rotate(360deg)}}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -643,7 +646,11 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
         <button type="button" class="tab on" onclick="tab('upload',this)">Upload file</button>
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
       </div>
-      <div id="tc-upload" class="tc on"><input type="file" name="images" accept="image/*" multiple id="img-file-input"></div>
+      <div id="tc-upload" class="tc on">
+        <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="display:none">
+        <button type="button" class="upload-btn" onclick="document.getElementById('img-file-input').click()">+ Choose photos</button>
+        <div id="img-file-count" class="upload-count"></div>
+      </div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" id="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
       <div id="img-previews" style="display:none;margin-top:10px;flex-wrap:wrap;gap:8px"></div>
 
@@ -713,7 +720,9 @@ function tab(id,btn){
 }
 document.getElementById('img-file-input').addEventListener('change',function(){
   var files=this.files;
-  if(!files||!files.length){_imgFileDataUrls=[];imgShowPreviews([]);return;}
+  var countEl=document.getElementById('img-file-count');
+  if(!files||!files.length){_imgFileDataUrls=[];imgShowPreviews([]);if(countEl)countEl.textContent='';return;}
+  if(countEl)countEl.textContent=files.length+' photo'+(files.length===1?'':'s')+' selected';
   var total=files.length,results=new Array(total),done=0;
   Array.prototype.forEach.call(files,function(file,i){
     var r=new FileReader();
@@ -755,37 +764,30 @@ function musicRender(hits){
     item.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();musicPick(i);}});
   });
 }
-function musicSearch(q){
+async function musicSearch(q){
   var seq=++_mSeq;
-  fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8')
-    .then(function(r){return r.json();})
-    .then(function(d){
-      if(seq!==_mSeq)return;
-      setMusicStatus('');
-      _mhits=(d.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
-      if(_mhits.length){musicRender(_mhits);return;}
-      throw new Error('no results');
-    })
-    .catch(function(){
-      if(seq!==_mSeq)return;
-      fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}})
-        .then(function(r){return r.json();})
-        .then(function(d){
-          if(seq!==_mSeq)return;
-          setMusicStatus('');
-          _mhits=(d.recordings||[]).map(function(rec){
-            var rel=(rec.releases||[])[0];
-            var rgid=rel&&rel['release-group']&&rel['release-group'].id;
-            return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
-          });
-          musicRender(_mhits);
-        })
-        .catch(function(){
-          if(seq!==_mSeq)return;
-          setMusicStatus('');
-          document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
-        });
+  var hits=[];
+  try{
+    var resp=await fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8');
+    var data=await resp.json();
+    hits=(data.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
+  }catch(e){}
+  if(seq!==_mSeq)return;
+  if(hits.length){setMusicStatus('');_mhits=hits;musicRender(hits);return;}
+  try{
+    var resp2=await fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}});
+    var data2=await resp2.json();
+    hits=(data2.recordings||[]).map(function(rec){
+      var rel=(rec.releases||[])[0];
+      var rgid=rel&&rel['release-group']&&rel['release-group'].id;
+      return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
     });
+  }catch(e){}
+  if(seq!==_mSeq)return;
+  setMusicStatus('');
+  _mhits=hits;
+  if(hits.length)musicRender(hits);
+  else document.getElementById('music-results').innerHTML='<p class="mres-msg">No results. Try a different search.</p>';
 }
 function musicPick(i){
   var r=_mhits[i];
