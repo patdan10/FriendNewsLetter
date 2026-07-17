@@ -722,17 +722,23 @@ function musicInput(val){
   _mTimer=setTimeout(function(){musicSearch(q);},380);
 }
 function musicRender(hits){
-  if(!hits.length){document.getElementById('music-results').innerHTML='<p class="mres-msg">No results. Try a different search.</p>';return;}
+  var el=document.getElementById('music-results');
+  if(!hits.length){el.innerHTML='<p class="mres-msg">No results. Try a different search.</p>';return;}
   var out='';
   hits.forEach(function(r,i){
-    out+='<div class="mres-item" tabindex="0" onclick="musicPick('+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();musicPick('+i+');}">'
-      +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=\'0\'">'
+    out+='<div class="mres-item" tabindex="0" data-i="'+i+'">'
+      +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=0">'
       +'<div class="mres-info">'
       +'<p class="mres-title">'+mesc(r.title)+'</p>'
-      +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' \xb7 '+mesc(r.album):'')+'</p>'
+      +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' &middot; '+mesc(r.album):'')+'</p>'
       +'</div></div>';
   });
-  document.getElementById('music-results').innerHTML=out;
+  el.innerHTML=out;
+  el.querySelectorAll('.mres-item').forEach(function(item){
+    var i=+item.dataset.i;
+    item.addEventListener('click',function(){musicPick(i);});
+    item.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();musicPick(i);}});
+  });
 }
 function musicSearch(q){
   var seq=++_mSeq;
