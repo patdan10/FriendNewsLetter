@@ -341,12 +341,33 @@ router.get('/admin/past', (req, res) => {
   const currentMonth = now.getMonth() + 1;
   const all = db.getAllNewsletters();
   const past = all.filter(n => !(n.year === currentYear && n.month === currentMonth));
-  res.send(pastNewslettersPage(past));
+  res.send(pastNewslettersPage(past, true));
 });
 
 router.get('/admin/newsletter/:id', (req, res) => {
   const newsletter = db.getNewsletter(parseInt(req.params.id));
   if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
+  const responses = db.getResponses(newsletter.id);
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
+});
+
+router.get('/past', (req, res) => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const all = db.getAllNewsletters();
+  const past = all.filter(n => !(n.year === currentYear && n.month === currentMonth));
+  res.send(pastNewslettersPage(past, false));
+});
+
+router.get('/newsletter/:id', (req, res) => {
+  const newsletter = db.getNewsletter(parseInt(req.params.id));
+  if (!newsletter) return res.status(404).send(errorPage('Newsletter not found'));
+  const now = new Date();
+  if (newsletter.year === now.getFullYear() && newsletter.month === now.getMonth() + 1) {
+    return res.status(403).send(errorPage('This month\'s newsletter hasn\'t been sent yet'));
+  }
   const responses = db.getResponses(newsletter.id);
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   res.send(buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl }));
@@ -658,8 +679,8 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   </div>
 
   <div style="text-align:center;padding:8px 0 16px;display:flex;justify-content:center;gap:24px;flex-wrap:wrap;">
-    <a href="/admin/responses" style="color:#667eea;font-size:14px;text-decoration:none;font-weight:600;">View this month's responses →</a>
-    <a href="/admin/past" style="color:#9ca3af;font-size:14px;text-decoration:none;font-weight:600;">Past newsletters →</a>
+    ${isAdmin ? `<a href="/admin/responses" style="color:#667eea;font-size:14px;text-decoration:none;font-weight:600;">View this month's responses →</a>` : ''}
+    <a href="${isAdmin ? '/admin/past' : '/past'}" style="color:#9ca3af;font-size:14px;text-decoration:none;font-weight:600;">Past newsletters →</a>
   </div>
 
   ${isAdmin ? `
@@ -672,8 +693,8 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
         <button type="submit" class="btn" style="background:#dc2626;color:#fff;">🗑️ Reset ${monthName} Newsletter</button>
       </form>
     </div>
-  </details>
-  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>` : ''}
+  </details>` : ''}
+  <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
 </div>
 <script>
 function addQuestion(){
@@ -847,13 +868,17 @@ input:focus{outline:none;border-color:#667eea}
 </body></html>`;
 }
 
-function pastNewslettersPage(newsletters) {
+function pastNewslettersPage(newsletters, isAdmin) {
+  const backUrl = isAdmin ? '/admin' : '/';
+  const backLabel = isAdmin ? '← Back to Admin' : '← Back';
+  const detailBase = isAdmin ? '/admin/newsletter' : '/newsletter';
+
   const rows = newsletters.length === 0
     ? '<p style="color:#9ca3af;text-align:center;padding:32px;">No past newsletters yet.</p>'
     : newsletters.map(n => {
         const monthName = MONTHS[n.month - 1];
         return `
-<a href="/admin/newsletter/${n.id}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #f3f4f6;text-decoration:none;color:inherit;background:#fff;transition:background .1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">
+<a href="${detailBase}/${n.id}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #f3f4f6;text-decoration:none;color:inherit;background:#fff;transition:background .1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">
   <div>
     <p style="margin:0;font-weight:600;color:#1f2937;font-size:15px;">${monthName} ${n.year}</p>
     <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;">Newsletter #${n.id}</p>
@@ -867,16 +892,17 @@ function pastNewslettersPage(newsletters) {
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Past Newsletters — Admin</title>
+<title>Past Newsletters — The Horseback Times</title>
 <style>${BASE_STYLE} body{padding:32px 16px} .wrap{max-width:620px;margin:0 auto}</style>
 </head><body>
 <div class="wrap">
-  <a href="/admin" style="display:inline-block;margin-bottom:20px;color:#667eea;font-size:14px;font-weight:600;text-decoration:none;">← Back to Admin</a>
+  <a href="${backUrl}" style="display:inline-block;margin-bottom:20px;color:#667eea;font-size:14px;font-weight:600;text-decoration:none;">${backLabel}</a>
   <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px 16px 0 0;padding:24px 28px;color:#fff;">
     <h1 style="margin:0;font-size:20px;font-weight:700;">Past Newsletters</h1>
     <p style="margin:4px 0 0;opacity:.8;font-size:13px;">${newsletters.length} previous edition${newsletters.length !== 1 ? 's' : ''}</p>
   </div>
   <div style="background:#fff;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden;">${rows}</div>
+  <p style="text-align:center;color:#d1d5db;font-size:11px;padding:16px 0;">v${version}</p>
 </div>
 </body></html>`;
 }
