@@ -203,6 +203,10 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:18px;font-weight:500;">${monthName} ${year} Edition</p>
   <p style="margin:6px 0 0;color:rgba(255,255,255,.7);font-size:14px;">${responses.length} response${responses.length !== 1 ? 's' : ''} from your friends</p>
 </td></tr>
+${viewUrl && isEmail ? `<tr><td style="padding:24px 40px 0;text-align:center;">
+  <a href="${viewUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:14px 36px;border-radius:50px;font-size:16px;font-weight:700;letter-spacing:.2px;">💬 View online &amp; comment</a>
+  <p style="margin:10px 0 0;color:#9ca3af;font-size:13px;">See music embeds, photos, and leave comments</p>
+</td></tr>` : ''}
 <tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">Update your response</a></p>` : ''}
