@@ -188,7 +188,7 @@ async function sendFormEmail({ toEmail, toName, newsletter, baseUrl }) {
   const token = makeToken(newsletter.id, toEmail);
   return deliver({
     toEmail, toName,
-    subject: `${MONTHS[newsletter.month - 1]} ${newsletter.year} - Share your update!`,
+    subject: `📝 ${MONTHS[newsletter.month - 1]} ${newsletter.year} - Share your update!`,
     html: buildFormEmail({ name: toName, month: newsletter.month, year: newsletter.year, questions: newsletter.questions, formUrl: `${baseUrl}/form/${token}` })
   });
 }
@@ -198,7 +198,7 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   const editUrl = `${baseUrl}/form/${token}`;
   return deliver({
     toEmail, toName,
-    subject: `${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
+    subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
     html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl })
   });
 }
@@ -220,7 +220,7 @@ function buildReminderEmail({ name, month, year, formUrl }) {
   <div style="text-align:center;margin-bottom:32px;">
     <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">Fill out your update</a>
   </div>
-  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No worries if you're swamped - just didn't want you to miss it.</p>
+  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No worries if you're busy - This is just a friendly reminder!</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times</p>
@@ -234,7 +234,7 @@ async function sendReminderEmail({ toEmail, toName, newsletter, baseUrl }) {
   const token = makeToken(newsletter.id, toEmail);
   return deliver({
     toEmail, toName,
-    subject: `Reminder: ${MONTHS[newsletter.month - 1]} newsletter goes out in 2 days`,
+    subject: `⏰ Reminder: ${MONTHS[newsletter.month - 1]} newsletter goes out in 2 days`,
     html: buildReminderEmail({ name: toName, month: newsletter.month, year: newsletter.year, formUrl: `${baseUrl}/form/${token}` })
   });
 }
@@ -248,7 +248,7 @@ async function sendAdminNotification({ responderName, newsletter, baseUrl }) {
   return deliver({
     toEmail: adminEmail,
     toName: 'Admin',
-    subject: `${responderName} submitted their ${monthName} response`,
+    subject: `🎉 ${responderName} submitted their ${monthName} response`,
     html: `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Arial,sans-serif;padding:40px;max-width:500px;margin:0 auto;">
 <h2 style="color:#1f2937;">New response submitted!</h2>
 <p style="color:#374151;font-size:16px;margin:16px 0;"><strong>${esc(responderName)}</strong> just filled out the ${monthName} ${newsletter.year} newsletter form.</p>
