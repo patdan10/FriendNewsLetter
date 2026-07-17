@@ -619,7 +619,11 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .mpick-change:hover{background:#ddd6fe}
 .mpick-remove{background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px;white-space:nowrap}
 .mpick-remove:hover{color:#ef4444}
-.img-thumb{width:100px;height:100px;object-fit:cover;border-radius:8px;flex-shrink:0}
+.img-thumb-wrap{position:relative;width:100px;height:100px;border-radius:8px;background:#f3f4f6;flex-shrink:0;overflow:hidden}
+.img-thumb{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s}
+.img-thumb.loaded{opacity:1}
+.img-thumb-spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#667eea;border-radius:50%;animation:img-spin .8s linear infinite}
+@keyframes img-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -689,11 +693,13 @@ function imgShowPreviews(urls){
   var visible=(urls||[]).filter(Boolean);
   if(!visible.length){w.style.display='none';return;}
   visible.forEach(function(src){
-    var img=document.createElement('img');
-    img.className='img-thumb';
+    var wrap=document.createElement('div');wrap.className='img-thumb-wrap';
+    var spin=document.createElement('div');spin.className='img-thumb-spin';
+    var img=document.createElement('img');img.className='img-thumb';
+    img.onload=function(){img.classList.add('loaded');spin.style.display='none';};
+    img.onerror=function(){wrap.parentNode&&wrap.parentNode.removeChild(wrap);};
     img.src=src;
-    img.onerror=function(){this.parentNode&&this.parentNode.removeChild(this);};
-    w.appendChild(img);
+    wrap.appendChild(spin);wrap.appendChild(img);w.appendChild(wrap);
   });
   w.style.display='flex';
 }
