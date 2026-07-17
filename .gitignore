@@ -3,3 +3,4 @@ node_modules/
 data/
 public/uploads/
 *.bat.tmp
+.mypy_cache/

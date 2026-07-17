@@ -1,6 +1,6 @@
 {
   "name": "horseback-times",
-  "version": "1.9.1",
+  "version": "2.0.1",
   "description": "The Horseback Times — monthly newsletter",
   "main": "src/index.js",
   "scripts": {

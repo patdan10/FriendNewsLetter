@@ -15,57 +15,11 @@ const DEFAULT_DB = {
   _nextId: { newsletter: 1, response: 1, comment: 1 }
 };
 
-// ─── CSV migration helper (read-only, used once) ──────────────────────────────
-
-function _csvMigrate(file) {
-  const candidates = [path.join(DATA_DIR, file), path.join(__dirname, '..', file)];
-  const src = candidates.find(f => fs.existsSync(f));
-  if (!src) return [];
-  try {
-    const lines = fs.readFileSync(src, 'utf8').trim().split(/\r?\n/).filter(l => l.trim());
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    return lines.slice(1).map(line => {
-      const vals = [];
-      let cur = '', inQ = false;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-        else if (c === ',' && !inQ) { vals.push(cur); cur = ''; }
-        else cur += c;
-      }
-      vals.push(cur);
-      return Object.fromEntries(headers.map((h, i) => [h, (vals[i] || '').replace(/^"|"$/g, '').trim()]));
-    });
-  } catch { return []; }
-}
-
 // ─── JSON db ──────────────────────────────────────────────────────────────────
 
 function load() {
-  let db;
-  if (!fs.existsSync(DB_FILE)) {
-    db = JSON.parse(JSON.stringify(DEFAULT_DB));
-  } else {
-    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  }
-
-  let dirty = false;
-
-  if (!Array.isArray(db.subscribers)) {
-    db.subscribers = _csvMigrate('subscribers.csv')
-      .filter(r => r.email)
-      .map(r => ({ name: r.name || '', email: r.email }));
-    dirty = true;
-  }
-
-  if (!Array.isArray(db.questions)) {
-    db.questions = _csvMigrate('questions.csv').map(r => r.question).filter(Boolean);
-    dirty = true;
-  }
-
-  if (dirty) save(db);
-  return db;
+  if (!fs.existsSync(DB_FILE)) return JSON.parse(JSON.stringify(DEFAULT_DB));
+  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 }
 
 function save(data) {
