@@ -85,8 +85,8 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year}</p>
 </td></tr>
 <tr><td style="padding:40px;">
-  <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)} -</p>
-  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">Time for the ${monthName} update. Answer what you want, skip what you don't.</p>
+  <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)}!</p>
+  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">Time for the ${monthName} update. Answer what you want, skip what you don't - no pressure.</p>
   <div style="background:#f9fafb;border-radius:12px;padding:24px;margin-bottom:28px;border:1px solid #e5e7eb;">
     <p style="margin:0 0 12px;color:#1f2937;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.5px;">This month's questions:</p>
     <ol style="margin:0;padding-left:20px;">${qs}</ol>
@@ -215,12 +215,12 @@ function buildReminderEmail({ name, month, year, formUrl }) {
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year} Newsletter</p>
 </td></tr>
 <tr><td style="padding:40px;">
-  <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)} -</p>
-  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">The ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong>. Still time to add your update if you haven't already.</p>
+  <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)}!</p>
+  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">The ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong> - still time to fill it out if you haven't yet!</p>
   <div style="text-align:center;margin-bottom:32px;">
     <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out your update</a>
   </div>
-  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No big deal if you're busy - just wanted to make sure you saw it.</p>
+  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No worries if you're swamped - just didn't want you to miss it.</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
