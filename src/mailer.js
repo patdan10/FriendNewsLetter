@@ -162,29 +162,54 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 </div>`;
   }).join('');
 
-  // Photos & Links section
-  const photoEmailRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map((r, i, arr) => {
+  function parseMusicMeta(raw) {
+    if (!raw) return null;
+    if (raw.startsWith('{')) {
+      try { return { type: 'meta', ...JSON.parse(raw) }; } catch (e) {}
+    }
+    return { type: 'url', url: raw };
+  }
+
+  // Photos section
+  const photoEmailRows = responses.filter(r => r.image_filename || r.image_url).map((r, i, arr) => {
     const name = r.name || r.email;
     const h = personHue(name);
     const last = i === arr.length - 1;
-    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
-    const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
-    const linksHtml = r.links?.length
-      ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')
-      : '';
+    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : esc(r.image_url);
     return `
 <div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
   <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
-  ${imgHtml}${linksHtml}
+  <div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>
 </div>`;
   }).join('');
 
   const photoSection = photoEmailRows ? `
 <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
   <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
-    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Photos &amp; Links</p>
+    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Photos</p>
   </div>
   <div style="padding:4px 20px 6px;">${photoEmailRows}</div>
+</div>` : '';
+
+  // Links section
+  const linksEmailRows = responses.filter(r => r.links?.length).map((r, i, arr) => {
+    const name = r.name || r.email;
+    const h = personHue(name);
+    const last = i === arr.length - 1;
+    const linksHtml = r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('');
+    return `
+<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
+  <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
+  ${linksHtml}
+</div>`;
+  }).join('');
+
+  const linksSection = linksEmailRows ? `
+<div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+  <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
+    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Links</p>
+  </div>
+  <div style="padding:4px 20px 6px;">${linksEmailRows}</div>
 </div>` : '';
 
   // Music section
@@ -192,12 +217,26 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
     const name = r.name || r.email;
     const h = personHue(name);
     const last = i === arr.length - 1;
-    const embedUrl = musicEmbedUrl(r.music_url);
-    const musicHtml = embedUrl
-      ? isEmail
-        ? `<a href="${esc(r.music_url)}" style="display:inline-block;background:#f0fdf4;color:#16a34a;text-decoration:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">♪ Listen on ${musicServiceName(r.music_url)}</a>`
-        : `<iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe>`
-      : '';
+    const meta = parseMusicMeta(r.music_url);
+    let musicHtml = '';
+    if (meta?.type === 'meta' && meta.title) {
+      const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(meta.title + (meta.artist ? ' ' + meta.artist : ''))}`;
+      musicHtml = `<div style="display:flex;align-items:center;gap:12px;background:#f3f0ff;border-radius:10px;padding:12px 14px;">
+  ${meta.image ? `<img src="${esc(meta.image)}" alt="" style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ''}
+  <div style="flex:1;min-width:0;">
+    <p style="margin:0 0 2px;font-weight:600;color:#1f2937;font-size:14px;">${esc(meta.title)}</p>
+    ${meta.artist ? `<p style="margin:0;color:#6b7280;font-size:13px;">${esc(meta.artist)}</p>` : ''}
+  </div>
+  <a href="${esc(ytUrl)}" style="flex-shrink:0;background:#ef4444;color:#fff;text-decoration:none;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;">&#9654; YouTube</a>
+</div>`;
+    } else if (meta?.type === 'url') {
+      const embedUrl = musicEmbedUrl(meta.url);
+      if (embedUrl) {
+        musicHtml = isEmail
+          ? `<a href="${esc(meta.url)}" style="display:inline-block;background:#f0fdf4;color:#16a34a;text-decoration:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">♪ Listen on ${musicServiceName(meta.url)}</a>`
+          : `<iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe>`;
+      }
+    }
     return `
 <div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
   <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
@@ -227,7 +266,7 @@ ${viewUrl && isEmail ? `<tr><td style="padding:24px 40px 0;text-align:center;">
   <a href="${viewUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:14px 36px;border-radius:50px;font-size:16px;font-weight:700;letter-spacing:.2px;">💬 View online &amp; comment</a>
   <p style="margin:10px 0 0;color:#9ca3af;font-size:13px;">See music embeds, photos, and leave comments</p>
 </td></tr>` : ''}
-<tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${photoSection}${musicSection}</td></tr>
+<tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${photoSection}${linksSection}${musicSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">Update your response</a></p>` : ''}
   ${viewUrl ? `<p style="margin:0 0 8px;"><a href="${viewUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">View &amp; comment online</a></p>` : ''}

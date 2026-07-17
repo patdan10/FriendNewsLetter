@@ -441,8 +441,9 @@ router.post('/newsletter/:id/comment', (req, res) => {
     const subscribers = db.getSubscribers();
     const response = db.getResponses(newsletterId).find(r => r.id === parseInt(response_id));
     const qi = parseInt(question_index);
-    const questionText = qi === -1 ? 'their photo/links'
+    const questionText = qi === -1 ? 'their photo'
       : qi === -2 ? 'their music'
+      : qi === -3 ? 'their links'
       : (newsletter.questions || [])[qi] || '';
     sendCommentNotification({
       subscribers,
@@ -525,26 +526,16 @@ router.get('/api/music-search', async (req, res) => {
   const results = [];
 
   try {
-    const token = await getSpotifyToken();
-    if (token) {
-      const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=5`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (r.ok) {
-        const d = await r.json();
-        for (const t of (d.tracks?.items || [])) {
-          results.push({ service: 'spotify', title: t.name, artist: t.artists.map(a => a.name).join(', '), image: t.album.images[1]?.url || t.album.images[0]?.url || '', url: t.external_urls.spotify });
-        }
-      }
-    }
-  } catch (e) { console.error('Spotify search:', e.message); }
-
-  try {
-    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=5`);
+    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`);
     if (r.ok) {
       const d = await r.json();
       for (const t of (d.results || [])) {
-        results.push({ service: 'apple', title: t.trackName, artist: t.artistName, image: t.artworkUrl100 || '', url: t.trackViewUrl });
+        results.push({
+          title: t.trackName,
+          artist: t.artistName,
+          album: t.collectionName || '',
+          image: (t.artworkUrl100 || '').replace('100x100bb', '300x300bb').replace('100x100', '200x200')
+        });
       }
     }
   } catch (e) { console.error('iTunes search:', e.message); }
@@ -574,6 +565,17 @@ function formPage({ newsletter, email, name, existing, token }) {
       <input type="text" name="link_url" class="link-url" placeholder="https://..." value="${esc(l.url)}">
       <button type="button" class="rm" onclick="this.parentElement.remove()">✕</button>
     </div>`).join('');
+
+  const existingMusic = (() => {
+    if (!existing?.music_url) return null;
+    if (existing.music_url.startsWith('{')) {
+      try { return JSON.parse(existing.music_url); } catch (e) {}
+    }
+    return { title: 'Music linked', artist: '', image: '' };
+  })();
+  const existingMusicPreviewHtml = existingMusic
+    ? `<div style="display:flex;align-items:center;gap:10px;min-width:0;">${existingMusic.image ? `<img src="${esc(existingMusic.image)}" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;">` : ''}<div style="min-width:0;"><p class="ms-title">${esc(existingMusic.title || 'Music linked')}</p>${existingMusic.artist ? `<p class="ms-artist" style="margin-top:2px;">${esc(existingMusic.artist)}</p>` : ''}</div></div>`
+    : '';
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -628,7 +630,7 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
   <div class="card">
     ${existing ? '<div class="already">✓ You already submitted — resubmitting will update your answers.</div>' : ''}
-    <p style="margin-bottom:28px;color:#6b7280;font-size:15px;">Hey <strong style="color:#1f2937">${esc(name)}</strong>! Share what's been going on in your life this month.</p>
+    <p style="margin-bottom:28px;color:#6b7280;font-size:15px;">Hey <strong style="color:#1f2937">${esc(name)}</strong>! Share what's been going on for you this month!</p>
     <form method="POST" action="/form/${token}" enctype="multipart/form-data">
       ${qs}
       <div class="sec">Share Links <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
@@ -647,13 +649,11 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
       <input type="hidden" name="music_url" id="music-url-val" value="${esc(existing?.music_url || '')}">
-      <div id="music-sel" style="display:${existing?.music_url ? 'flex' : 'none'};align-items:center;gap:12px;" class="ms-card">
-        <div id="music-preview" style="flex:1;">
-          ${existing?.music_url ? `<p class="ms-title">♪ ${/spotify/.test(existing.music_url) ? 'Spotify' : 'Apple Music'} track linked</p><p class="ms-artist" style="margin-top:2px;">Search to change</p>` : ''}
-        </div>
-        <button type="button" class="ms-rm" onclick="clearMusic()" title="Remove">✕</button>
+      <div id="music-sel" style="display:${existingMusic ? 'flex' : 'none'};align-items:center;gap:12px;" class="ms-card">
+        <div id="music-preview" style="flex:1;min-width:0;">${existingMusicPreviewHtml}</div>
+        <button type="button" class="ms-rm" id="music-clear-btn" title="Remove">✕</button>
       </div>
-      <div id="music-search" style="display:${existing?.music_url ? 'none' : 'block'}">
+      <div id="music-search" style="display:${existingMusic ? 'none' : 'block'}">
         <div class="ms-row">
           <input type="text" id="music-q" placeholder="Search for a song or artist..." onkeydown="if(event.key==='Enter'){event.preventDefault();doMusicSearch();}">
           <button type="button" class="ms-btn" id="ms-go" onclick="doMusicSearch()">Search</button>
@@ -694,11 +694,11 @@ function doMusicSearch(){
         out='<p style="color:#9ca3af;font-size:14px;padding:6px 0;">No results found.</p>';
       } else {
         _mhits.forEach(function(r,i){
-          var svc=r.service==='spotify'?'Spotify':'Apple Music';
           out+='<div class="ms-result" onclick="pickMusic('+i+')">'
             +(r.image?'<img class="ms-img" src="'+mesc(r.image)+'" onerror="this.style.display=\'none\'">':'<div class="ms-img"></div>')
-            +'<div class="ms-info"><p class="ms-title">'+mesc(r.title)+'</p><p class="ms-artist">'+mesc(r.artist)+'</p></div>'
-            +'<span class="ms-badge '+r.service+'">'+svc+'</span></div>';
+            +'<div class="ms-info"><p class="ms-title">'+mesc(r.title)+'</p>'
+            +(r.artist?'<p class="ms-artist">'+mesc(r.artist)+(r.album?' &middot; <span style="opacity:.7">'+mesc(r.album)+'</span>':'')+'</p>':'')
+            +'</div></div>';
         });
       }
       document.getElementById('music-results').innerHTML=out;
@@ -707,12 +707,14 @@ function doMusicSearch(){
 }
 function pickMusic(i){
   var r=_mhits[i];
-  document.getElementById('music-url-val').value=r.url;
-  var svc=r.service==='spotify'?'Spotify':'Apple Music';
+  var meta=JSON.stringify({title:r.title,artist:r.artist||'',image:r.image||''});
+  document.getElementById('music-url-val').value=meta;
   document.getElementById('music-preview').innerHTML=
     '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
-    +(r.image?'<img src="'+mesc(r.image)+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0;">':'')
-    +'<div style="min-width:0;"><p class="ms-title">'+mesc(r.title)+'</p><p class="ms-artist" style="margin-top:2px;">'+mesc(r.artist)+' · '+svc+'</p></div></div>';
+    +(r.image?'<img src="'+mesc(r.image)+'" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;">':'')
+    +'<div style="min-width:0;"><p class="ms-title">'+mesc(r.title)+'</p>'
+    +(r.artist?'<p class="ms-artist" style="margin-top:2px;">'+mesc(r.artist)+'</p>':'')
+    +'</div></div>';
   document.getElementById('music-sel').style.display='flex';
   document.getElementById('music-search').style.display='none';
 }
@@ -724,6 +726,7 @@ function clearMusic(){
   document.getElementById('music-results').innerHTML='';
   document.getElementById('music-q').value='';
 }
+document.getElementById('music-clear-btn').addEventListener('click',clearMusic);
 function mesc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 </script>
 <p style="text-align:center;margin-top:24px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
@@ -1211,6 +1214,14 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
     return `<div class="card"><h2 class="q-label">${qi + 1}. ${esc(q)}</h2>${blocks}</div>`;
   }).join('');
 
+  function parseMusicMeta(raw) {
+    if (!raw) return null;
+    if (raw.startsWith('{')) {
+      try { return { type: 'meta', ...JSON.parse(raw) }; } catch (e) {}
+    }
+    return { type: 'url', url: raw };
+  }
+
   function musicEmbedLocal(url) {
     if (!url) return null;
     const sp = url.match(/open\.spotify\.com\/(track|album|playlist|show|episode)\/([^?&/]+)/);
@@ -1219,31 +1230,61 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
     return null;
   }
 
-  // Photos & Links section (question_index = -1)
-  const photoResps = responses.filter(r => r.image_filename || r.image_url || r.links?.length);
+  // Photos section (question_index = -1)
+  const photoResps = responses.filter(r => r.image_filename || r.image_url);
   const photoBlocks = photoResps.map(r => {
     const h = personHue(r.name || r.email);
-    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
-    const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
-    const linksHtml = r.links?.length ? `<div style="margin-bottom:4px;">${r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')}</div>` : '';
+    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : esc(r.image_url);
+    const imgHtml = `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>`;
     const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -1);
     const addId = `add-photo-${r.id}`;
     return `<div class="answer-block" id="q-1-r${r.id}">
   <p class="person-tag" style="color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>
-  ${imgHtml}${linksHtml}
+  ${imgHtml}
   ${threadComments.length ? `<div class="thread">${renderThread(threadComments, null, 0)}</div>` : ''}
   <button type="button" class="add-comment-btn" onclick="toggleEl('${addId}')">+ Comment</button>
   <div id="${addId}" style="display:none;margin-top:8px;">${commentFormHtml({ responseId: r.id, questionIndex: -1 })}</div>
 </div>`;
   }).join('');
-  const photoSection = photoBlocks ? `<div class="card"><h2 class="q-label">Photos &amp; Links</h2>${photoBlocks}</div>` : '';
+  const photoSection = photoBlocks ? `<div class="card"><h2 class="q-label">Photos</h2>${photoBlocks}</div>` : '';
+
+  // Links section (question_index = -3)
+  const linkResps = responses.filter(r => r.links?.length);
+  const linkBlocks = linkResps.map(r => {
+    const h = personHue(r.name || r.email);
+    const linksHtml = `<div style="margin-bottom:4px;">${r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')}</div>`;
+    const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -3);
+    const addId = `add-links-${r.id}`;
+    return `<div class="answer-block" id="q-3-r${r.id}">
+  <p class="person-tag" style="color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>
+  ${linksHtml}
+  ${threadComments.length ? `<div class="thread">${renderThread(threadComments, null, 0)}</div>` : ''}
+  <button type="button" class="add-comment-btn" onclick="toggleEl('${addId}')">+ Comment</button>
+  <div id="${addId}" style="display:none;margin-top:8px;">${commentFormHtml({ responseId: r.id, questionIndex: -3 })}</div>
+</div>`;
+  }).join('');
+  const linksSection = linkBlocks ? `<div class="card"><h2 class="q-label">Links</h2>${linkBlocks}</div>` : '';
 
   // Music section (question_index = -2)
   const musicResps = responses.filter(r => r.music_url);
   const musicBlocks = musicResps.map(r => {
     const h = personHue(r.name || r.email);
-    const embedUrl = musicEmbedLocal(r.music_url);
-    const musicHtml = embedUrl ? `<div style="margin-bottom:4px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>` : '';
+    const meta = parseMusicMeta(r.music_url);
+    let musicHtml = '';
+    if (meta?.type === 'meta' && meta.title) {
+      const ytSearch = `https://www.youtube.com/results?search_query=${encodeURIComponent(meta.title + (meta.artist ? ' ' + meta.artist : ''))}`;
+      musicHtml = `<div style="display:flex;align-items:center;gap:12px;background:#f0f0ff;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+  ${meta.image ? `<img src="${esc(meta.image)}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ''}
+  <div style="flex:1;min-width:0;">
+    <p style="margin:0 0 2px;font-weight:600;color:#1f2937;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(meta.title)}</p>
+    ${meta.artist ? `<p style="margin:0;color:#6b7280;font-size:13px;">${esc(meta.artist)}</p>` : ''}
+  </div>
+  <a href="${esc(ytSearch)}" target="_blank" rel="noopener" style="flex-shrink:0;background:#ef4444;color:#fff;text-decoration:none;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">&#9654; YouTube</a>
+</div>`;
+    } else if (meta?.type === 'url') {
+      const embedUrl = musicEmbedLocal(meta.url);
+      if (embedUrl) musicHtml = `<div style="margin-bottom:4px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>`;
+    }
     const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -2);
     const addId = `add-music-${r.id}`;
     return `<div class="answer-block" id="q-2-r${r.id}">
@@ -1302,6 +1343,7 @@ body{padding:32px 16px}
   </div>
   ${qSections || '<div class="card"><p style="color:#9ca3af;text-align:center;">No questions this month.</p></div>'}
   ${photoSection}
+  ${linksSection}
   ${musicSection}
   <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
 </div>
