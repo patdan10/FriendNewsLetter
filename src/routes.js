@@ -99,7 +99,7 @@ router.get('/form/:token', (req, res) => {
   }
 });
 
-router.post('/form/:token', upload.single('image'), (req, res) => {
+router.post('/form/:token', upload.array('images', 10), (req, res) => {
   try {
     const { newsletterId, email } = parseToken(req.params.token);
     const newsletter = db.getNewsletter(newsletterId);
@@ -109,7 +109,7 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
     const subscriber = db.getSubscribers().find(s => s.email === email);
     const name = subscriber?.name || email;
     const imageUrl = (req.body.image_url || '').trim();
-    const imageFilename = req.file ? path.basename(req.file.path) : null;
+    const imageFilenames = (req.files || []).map(f => path.basename(f.path));
     const musicUrl = (req.body.music_url || '').trim();
 
     const linkLabels = [].concat(req.body.link_label || []);
@@ -118,7 +118,7 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
       .map((url, i) => ({ url: normalizeUrl(url.trim()), label: (linkLabels[i] || '').trim() }))
       .filter(l => l.url);
 
-    db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename, musicUrl });
+    db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilenames, musicUrl });
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     sendAdminNotification({ responderName: name, newsletter, baseUrl }).catch(() => {});
     res.send(thankYouPage(MONTHS[newsletter.month - 1], newsletter.year, `${baseUrl}/form/${req.params.token}`));
@@ -354,7 +354,11 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
   if (!response) return res.status(404).send(errorPage('Response not found'));
 
   const imageUrl = (req.body.image_url || '').trim();
-  const imageFilename = req.file ? path.basename(req.file.path) : (req.body.clear_image === '1' ? null : response.image_filename);
+  const existingFilenames = response.image_filenames && response.image_filenames.length
+    ? response.image_filenames
+    : (response.image_filename ? [response.image_filename] : []);
+  const imageFilenames = req.file ? [path.basename(req.file.path)]
+    : (req.body.clear_image === '1' ? [] : existingFilenames);
 
   const linkLabels = [].concat(req.body.link_label || []);
   const linkUrls = [].concat(req.body.link_url || []);
@@ -363,7 +367,7 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
     .filter(l => l.url);
 
   const musicUrl = (req.body.music_url || '').trim();
-  db.patchResponse(response.id, { imageUrl, imageFilename, links, musicUrl });
+  db.patchResponse(response.id, { imageUrl, imageFilenames, links, musicUrl });
   res.redirect('/admin/responses');
 });
 
@@ -615,6 +619,7 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .mpick-change:hover{background:#ddd6fe}
 .mpick-remove{background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px;white-space:nowrap}
 .mpick-remove:hover{color:#ef4444}
+.img-thumb{width:100px;height:100px;object-fit:cover;border-radius:8px;flex-shrink:0}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -634,9 +639,9 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
         <button type="button" class="tab on" onclick="tab('upload',this)">Upload file</button>
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
       </div>
-      <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*" id="img-file-input"></div>
+      <div id="tc-upload" class="tc on"><input type="file" name="images" accept="image/*" multiple id="img-file-input"></div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" id="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
-      <div id="img-preview-wrap" style="display:none;margin-top:10px"><img id="img-preview" src="" alt="Preview" style="max-width:100%;max-height:220px;border-radius:10px;display:block"></div>
+      <div id="img-previews" style="display:none;margin-top:10px;flex-wrap:wrap;gap:8px"></div>
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
       <input type="hidden" name="music_url" id="music-url-val" value="${esc(existing?.music_url || '')}">
@@ -675,37 +680,48 @@ function addLink(){
   d.innerHTML='<input type="text" name="link_label" class="link-label" placeholder="Label (e.g. Cool article)"><input type="text" name="link_url" class="link-url" placeholder="https://..."><button type="button" class="rm" onclick="this.parentElement.remove()">✕</button>';
   c.appendChild(d);d.querySelector('input').focus();
 }
-var _imgFileDataUrl='';
-function imgShowPreview(src){
-  var w=document.getElementById('img-preview-wrap'),p=document.getElementById('img-preview');
-  if(!src){w.style.display='none';p.src='';return;}
-  p.onload=function(){w.style.display='block';};
-  p.onerror=function(){w.style.display='none';};
-  p.src=src;
+var _mhits=[],_mTimer=null,_mSeq=0;
+var _imgFileDataUrls=[];
+function imgShowPreviews(urls){
+  var w=document.getElementById('img-previews');
+  if(!w)return;
+  w.innerHTML='';
+  var visible=(urls||[]).filter(Boolean);
+  if(!visible.length){w.style.display='none';return;}
+  visible.forEach(function(src){
+    var img=document.createElement('img');
+    img.className='img-thumb';
+    img.src=src;
+    img.onerror=function(){this.parentNode&&this.parentNode.removeChild(this);};
+    w.appendChild(img);
+  });
+  w.style.display='flex';
 }
 function tab(id,btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('tc-'+id).classList.add('on');
-  if(id==='url') imgShowPreview(document.getElementById('img-url-input').value.trim());
-  else imgShowPreview(_imgFileDataUrl);
+  if(id==='url'){var el=document.getElementById('img-url-input');imgShowPreviews(el&&el.value.trim()?[el.value.trim()]:[]);}
+  else imgShowPreviews(_imgFileDataUrls);
 }
 document.getElementById('img-file-input').addEventListener('change',function(){
-  if(!this.files||!this.files[0]){_imgFileDataUrl='';imgShowPreview('');return;}
-  var r=new FileReader();
-  r.onload=function(e){_imgFileDataUrl=e.target.result;imgShowPreview(_imgFileDataUrl);};
-  r.readAsDataURL(this.files[0]);
+  var files=this.files;
+  if(!files||!files.length){_imgFileDataUrls=[];imgShowPreviews([]);return;}
+  var total=files.length,results=new Array(total),done=0;
+  Array.prototype.forEach.call(files,function(file,i){
+    var r=new FileReader();
+    r.onload=function(e){results[i]=e.target.result;if(++done===total){_imgFileDataUrls=results;imgShowPreviews(results);}};
+    r.readAsDataURL(file);
+  });
 });
 var _imgUrlTimer=null;
 document.getElementById('img-url-input').addEventListener('input',function(){
-  clearTimeout(_imgUrlTimer);
-  var v=this.value.trim();
-  _imgUrlTimer=setTimeout(function(){imgShowPreview(v);},400);
+  clearTimeout(_imgUrlTimer);var v=this.value.trim();
+  _imgUrlTimer=setTimeout(function(){imgShowPreviews(v?[v]:[]);},400);
 });
-imgShowPreview(document.getElementById('img-url-input').value.trim());
+(function(){var el=document.getElementById('img-url-input');if(el&&el.value.trim())imgShowPreviews([el.value.trim()]);})();
 document.getElementById('music-q').addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
-var _mhits=[],_mTimer=null,_mSeq=0;
 function musicInput(val){
   clearTimeout(_mTimer);
   var q=val.trim();
@@ -1140,11 +1156,12 @@ function editResponsePage({ response, newsletter }) {
       <button type="button" class="rm" onclick="this.parentElement.remove()">✕</button>
     </div>`).join('');
 
-  const currentImg = response.image_filename
-    ? `/uploads/${esc(response.image_filename)}`
-    : response.image_url ? esc(response.image_url) : null;
-  const currentImgHtml = currentImg
-    ? `<div style="margin-bottom:12px;"><img src="${currentImg}" style="max-width:100%;max-height:200px;border-radius:8px;display:block;"><label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:#dc2626;cursor:pointer;"><input type="checkbox" name="clear_image" value="1"> Remove current image</label></div>`
+  const currentImgSrcs = [
+    ...(response.image_filenames && response.image_filenames.length ? response.image_filenames.map(fn => `/uploads/${esc(fn)}`) : (response.image_filename ? [`/uploads/${esc(response.image_filename)}`] : [])),
+    ...(response.image_url ? [esc(response.image_url)] : [])
+  ];
+  const currentImgHtml = currentImgSrcs.length
+    ? `<div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">${currentImgSrcs.map(s => `<img src="${s}" style="max-height:120px;max-width:200px;border-radius:8px;object-fit:cover">`).join('')}</div><label style="display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;font-size:13px;color:#dc2626;cursor:pointer;"><input type="checkbox" name="clear_image" value="1"> Remove current image(s)</label>`
     : '';
 
   return `<!DOCTYPE html><html lang="en"><head>
@@ -1299,11 +1316,14 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
   }
 
   // Photos section (question_index = -1)
-  const photoResps = responses.filter(r => r.image_filename || r.image_url);
+  const photoResps = responses.filter(r => (r.image_filenames && r.image_filenames.length) || r.image_filename || r.image_url);
   const photoBlocks = photoResps.map(r => {
     const h = personHue(r.name || r.email);
-    const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : esc(r.image_url);
-    const imgHtml = `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>`;
+    const imgSrcs = [
+      ...(r.image_filenames && r.image_filenames.length ? r.image_filenames.map(fn => `${baseUrl}/uploads/${esc(fn)}`) : (r.image_filename ? [`${baseUrl}/uploads/${esc(r.image_filename)}`] : [])),
+      ...(r.image_url ? [esc(r.image_url)] : [])
+    ];
+    const imgHtml = imgSrcs.map(src => `<div style="margin-bottom:10px;"><img src="${src}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>`).join('');
     const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -1);
     const addId = `add-photo-${r.id}`;
     return `<div class="answer-block" id="q-1-r${r.id}">
