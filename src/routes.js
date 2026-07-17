@@ -527,36 +527,6 @@ async function getSpotifyToken() {
 }
 
 
-router.get('/api/music-search', async (req, res) => {
-  const q = (req.query.q || '').trim();
-  if (q.length < 2) return res.json({ results: [] });
-
-  try {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 5000);
-    const r = await fetch(
-      `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=8`,
-      { signal: ac.signal, headers: { 'User-Agent': 'TheHorsebackTimes/2.0 (thehorsebacktimes.fly.dev)', Accept: 'application/json' } }
-    ).finally(() => clearTimeout(t));
-
-    if (!r.ok) return res.json({ results: [] });
-    const d = await r.json();
-    const results = (d.recordings || []).map(rec => {
-      const release = (rec.releases || [])[0];
-      const rgid = release?.['release-group']?.id;
-      return {
-        title: rec.title || '',
-        artist: rec['artist-credit']?.[0]?.artist?.name || '',
-        album: release?.title || '',
-        image: rgid ? `https://coverartarchive.org/release-group/${rgid}/front-250` : ''
-      };
-    });
-    res.json({ results });
-  } catch (e) {
-    console.error('MusicBrainz search:', e.message);
-    res.json({ results: [] });
-  }
-});
 
 // ─── HTML templates ──────────────────────────────────────────────────────────
 
@@ -742,18 +712,34 @@ function musicRender(hits){
 }
 function musicSearch(q){
   var seq=++_mSeq;
-  fetch('/api/music-search?q='+encodeURIComponent(q))
+  fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}})
     .then(function(r){return r.json();})
     .then(function(d){
       if(seq!==_mSeq)return;
       setMusicStatus('');
-      _mhits=d.results||[];
-      musicRender(_mhits);
+      _mhits=(d.recordings||[]).map(function(rec){
+        var rel=(rec.releases||[])[0];
+        var rgid=rel&&rel['release-group']&&rel['release-group'].id;
+        return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
+      });
+      if(_mhits.length){musicRender(_mhits);return;}
+      throw new Error('no results');
     })
     .catch(function(){
       if(seq!==_mSeq)return;
-      setMusicStatus('');
-      document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
+      fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8')
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(seq!==_mSeq)return;
+          setMusicStatus('');
+          _mhits=(d.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
+          musicRender(_mhits);
+        })
+        .catch(function(){
+          if(seq!==_mSeq)return;
+          setMusicStatus('');
+          document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
+        });
     });
 }
 function musicPick(i){
