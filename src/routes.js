@@ -529,24 +529,39 @@ async function getSpotifyToken() {
 router.get('/api/music-search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ results: [] });
-  const results = [];
+  const UA = 'Mozilla/5.0 (compatible; FriendNewsletter/2.0)';
 
+  // Try iTunes first
   try {
-    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`);
+    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`, { headers: { 'User-Agent': UA } });
     if (r.ok) {
       const d = await r.json();
-      for (const t of (d.results || [])) {
-        results.push({
-          title: t.trackName,
-          artist: t.artistName,
-          album: t.collectionName || '',
-          image: (t.artworkUrl100 || '').replace('100x100bb', '300x300bb').replace('100x100', '200x200')
-        });
-      }
+      const results = (d.results || []).map(t => ({
+        title: t.trackName,
+        artist: t.artistName,
+        album: t.collectionName || '',
+        image: (t.artworkUrl100 || '').replace('100x100bb', '300x300bb').replace('100x100', '200x200')
+      }));
+      if (results.length) return res.json({ results });
     }
-  } catch (e) { console.error('iTunes search:', e.message); }
+  } catch (e) { console.error('iTunes search failed:', e.message); }
 
-  res.json({ results });
+  // Fallback: Deezer
+  try {
+    const r = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=8`, { headers: { 'User-Agent': UA } });
+    if (r.ok) {
+      const d = await r.json();
+      const results = (d.data || []).map(t => ({
+        title: t.title,
+        artist: t.artist?.name || '',
+        album: t.album?.title || '',
+        image: t.album?.cover_medium || ''
+      }));
+      return res.json({ results });
+    }
+  } catch (e) { console.error('Deezer search failed:', e.message); }
+
+  res.json({ results: [] });
 });
 
 // ─── HTML templates ──────────────────────────────────────────────────────────
