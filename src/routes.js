@@ -439,19 +439,19 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .sub-btn:hover{opacity:.9}
 </style></head><body>
 <div class="wrap">
-  <div class="hdr"><h1>🐴 The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
+  <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
   <div class="card">
     ${existing ? '<div class="already">✓ You already submitted — resubmitting will update your answers.</div>' : ''}
     <p style="margin-bottom:28px;color:#6b7280;font-size:15px;">Hey <strong style="color:#1f2937">${esc(name)}</strong>! Share what's been going on in your life this month.</p>
     <form method="POST" action="/form/${token}" enctype="multipart/form-data">
       ${qs}
-      <div class="sec">🔗 Share Links <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
-      <p class="sec-sub">Articles, videos, recipes, tools — anything worth sharing.</p>
+      <div class="sec">Share Links <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
+      <p class="sec-sub">Articles, videos, recipes, etc...</p>
       <div id="links">${existingLinksHtml}</div>
       <button type="button" class="add-btn" onclick="addLink()">+ Add Link</button>
 
-      <div class="sec">🖼️ Share an Image <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
-      <p class="sec-sub">A photo from your month, something that made you smile, etc.</p>
+      <div class="sec">Share an Image <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
+      <p class="sec-sub">A photo from your month, something that made you smile, etc...</p>
       <div class="tabs">
         <button type="button" class="tab on" onclick="tab('upload',this)">Upload file</button>
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
@@ -459,7 +459,7 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
       <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
 
-      <button type="submit" class="sub-btn">✉️ Submit My Update</button>
+      <button type="submit" class="sub-btn">Submit My Update</button>
     </form>
   </div>
 </div>
@@ -498,7 +498,7 @@ p{color:#6b7280;font-size:15px;line-height:1.7}
   <div class="emoji">🎉</div>
   <h1>Thanks for sharing!</h1>
   <p>Your ${monthName} ${year} update has been saved. It'll be compiled with everyone's responses and sent to the group on the last day of the month.</p>
-  ${formUrl ? `<a href="${esc(formUrl)}" class="edit-link">✏️ Edit your answers</a>` : ''}
+  ${formUrl ? `<a href="${esc(formUrl)}" class="edit-link">Edit your answers</a>` : ''}
 </div>
 <p style="text-align:center;margin-top:20px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
 </body></html>`;
@@ -596,7 +596,7 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 <div class="wrap">
   <div class="hdr">
     <div>
-      <h1>🐴 The Horseback Times${isAdmin ? ' Admin' : ''}</h1>
+      <h1>The Horseback Times${isAdmin ? ' Admin' : ''}</h1>
       <p>${monthName} ${newsletter.year}${isAdmin ? ` · Newsletter #${newsletter.id}` : ''}</p>
     </div>
     ${isAdmin

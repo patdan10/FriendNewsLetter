@@ -81,20 +81,20 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
 <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;">
-  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">🐴 The Horseback Times</h1>
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">The Horseback Times</h1>
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:16px;">${monthName} ${year}</p>
 </td></tr>
 <tr><td style="padding:40px;">
   <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)}!</p>
-  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">Time for the ${monthName} update. Answer what you want, skip what you don't - no pressure.</p>
+  <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">Time for the ${monthName} update.</p>
   <div style="background:#f9fafb;border-radius:12px;padding:24px;margin-bottom:28px;border:1px solid #e5e7eb;">
     <p style="margin:0 0 12px;color:#1f2937;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.5px;">This month's questions:</p>
     <ol style="margin:0;padding-left:20px;">${qs}</ol>
   </div>
   <div style="text-align:center;margin-bottom:32px;">
-    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out your update</a>
+    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">Click Here For The Form</a>
   </div>
-  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Everyone's responses get compiled and sent out at the end of the month. You can add photos and links too.</p>
+  <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Everyone's responses get compiled and sent out at the end of the month.</p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   <p style="margin:0;color:#9ca3af;font-size:12px;">The Horseback Times · Sent with ❤️</p>
@@ -170,7 +170,7 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 <tr><td align="center">
 <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
 <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;">
-  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">🐴 The Horseback Times</h1>
+  <h1 style="margin:0;color:#fff;font-size:28px;font-weight:700;">The Horseback Times</h1>
   <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:18px;font-weight:500;">${monthName} ${year} Edition</p>
   <p style="margin:6px 0 0;color:rgba(255,255,255,.7);font-size:14px;">${responses.length} response${responses.length !== 1 ? 's' : ''} from your friends</p>
 </td></tr>
