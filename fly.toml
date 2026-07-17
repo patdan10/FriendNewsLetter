@@ -1,5 +1,5 @@
-app = 'friendnewsletter'
-primary_region = 'ord'
+app = 'thehorsebacktimes'
+primary_region = 'iad'
 
 [build]
 
