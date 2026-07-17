@@ -92,7 +92,7 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
     <ol style="margin:0;padding-left:20px;">${qs}</ol>
   </div>
   <div style="text-align:center;margin-bottom:32px;">
-    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out my update</a>
+    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out your update</a>
   </div>
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">Everyone's responses get compiled and sent out at the end of the month. You can add photos and links too.</p>
 </td></tr>
@@ -218,7 +218,7 @@ function buildReminderEmail({ name, month, year, formUrl }) {
   <p style="margin:0 0 16px;color:#1f2937;font-size:18px;">Hey ${esc(name)} —</p>
   <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">The ${monthName} newsletter goes out in <strong style="color:#1f2937;">2 days</strong>. Still time to add your update if you haven't already.</p>
   <div style="text-align:center;margin-bottom:32px;">
-    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out my update</a>
+    <a href="${formUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:600;">✍️ Fill out your update</a>
   </div>
   <p style="margin:0;color:#9ca3af;font-size:13px;text-align:center;">No big deal if you're busy — just wanted to make sure you saw it.</p>
 </td></tr>
