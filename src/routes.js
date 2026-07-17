@@ -526,14 +526,21 @@ async function getSpotifyToken() {
   } catch { return null; }
 }
 
+function timedFetch(url, opts, ms) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(t));
+}
+
 router.get('/api/music-search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ results: [] });
   const UA = 'Mozilla/5.0 (compatible; FriendNewsletter/2.0)';
+  const opts = { headers: { 'User-Agent': UA } };
 
-  // Try iTunes first
+  // Try iTunes first (3s timeout)
   try {
-    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`, { headers: { 'User-Agent': UA } });
+    const r = await timedFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8`, opts, 3000);
     if (r.ok) {
       const d = await r.json();
       const results = (d.results || []).map(t => ({
@@ -546,9 +553,9 @@ router.get('/api/music-search', async (req, res) => {
     }
   } catch (e) { console.error('iTunes search failed:', e.message); }
 
-  // Fallback: Deezer
+  // Fallback: Deezer (3s timeout)
   try {
-    const r = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=8`, { headers: { 'User-Agent': UA } });
+    const r = await timedFetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=8`, opts, 3000);
     if (r.ok) {
       const d = await r.json();
       const results = (d.data || []).map(t => ({
