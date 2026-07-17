@@ -634,8 +634,9 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
         <button type="button" class="tab on" onclick="tab('upload',this)">Upload file</button>
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
       </div>
-      <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
-      <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
+      <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*" id="img-file-input"></div>
+      <div id="tc-url" class="tc"><input type="text" name="image_url" id="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
+      <div id="img-preview-wrap" style="display:none;margin-top:10px"><img id="img-preview" src="" alt="Preview" style="max-width:100%;max-height:220px;border-radius:10px;display:block"></div>
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
       <input type="hidden" name="music_url" id="music-url-val" value="${esc(existing?.music_url || '')}">
@@ -674,12 +675,35 @@ function addLink(){
   d.innerHTML='<input type="text" name="link_label" class="link-label" placeholder="Label (e.g. Cool article)"><input type="text" name="link_url" class="link-url" placeholder="https://..."><button type="button" class="rm" onclick="this.parentElement.remove()">✕</button>';
   c.appendChild(d);d.querySelector('input').focus();
 }
+var _imgFileDataUrl='';
+function imgShowPreview(src){
+  var w=document.getElementById('img-preview-wrap'),p=document.getElementById('img-preview');
+  if(!src){w.style.display='none';p.src='';return;}
+  p.onload=function(){w.style.display='block';};
+  p.onerror=function(){w.style.display='none';};
+  p.src=src;
+}
 function tab(id,btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('tc-'+id).classList.add('on');
+  if(id==='url') imgShowPreview(document.getElementById('img-url-input').value.trim());
+  else imgShowPreview(_imgFileDataUrl);
 }
+document.getElementById('img-file-input').addEventListener('change',function(){
+  if(!this.files||!this.files[0]){_imgFileDataUrl='';imgShowPreview('');return;}
+  var r=new FileReader();
+  r.onload=function(e){_imgFileDataUrl=e.target.result;imgShowPreview(_imgFileDataUrl);};
+  r.readAsDataURL(this.files[0]);
+});
+var _imgUrlTimer=null;
+document.getElementById('img-url-input').addEventListener('input',function(){
+  clearTimeout(_imgUrlTimer);
+  var v=this.value.trim();
+  _imgUrlTimer=setTimeout(function(){imgShowPreview(v);},400);
+});
+imgShowPreview(document.getElementById('img-url-input').value.trim());
 document.getElementById('music-q').addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
 var _mhits=[],_mTimer=null,_mSeq=0;
 function musicInput(val){
