@@ -15,6 +15,7 @@ app.use('/', routes);
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\nThe Horseback Times running at http://localhost:${PORT}`);
   console.log(`Admin panel:  http://localhost:${PORT}/admin\n`);
+  require('./db').getSubscribers(); // pre-warm db cache before first request
   const { startScheduler } = require('./scheduler');
   startScheduler();
 });
