@@ -573,9 +573,6 @@ function formPage({ newsletter, email, name, existing, token }) {
     }
     return { title: 'Music linked', artist: '', image: '' };
   })();
-  const existingMusicPreviewHtml = existingMusic
-    ? `<div style="display:flex;align-items:center;gap:10px;min-width:0;">${existingMusic.image ? `<img src="${esc(existingMusic.image)}" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;">` : ''}<div style="min-width:0;"><p class="ms-title">${esc(existingMusic.title || 'Music linked')}</p>${existingMusic.artist ? `<p class="ms-artist" style="margin-top:2px;">${esc(existingMusic.artist)}</p>` : ''}</div></div>`
-    : '';
 
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -609,22 +606,30 @@ input:focus,textarea:focus{outline:none;border-color:#667eea}
 input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius:10px;cursor:pointer}
 .sub-btn{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:16px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:28px}
 .sub-btn:hover{opacity:.9}
-.ms-row{display:flex;gap:8px;margin-bottom:10px}
-.ms-row input{flex:1;min-width:0}
-.ms-btn{background:#ede9fe;color:#7c3aed;border:none;padding:11px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;flex-shrink:0}
-.ms-btn:hover{background:#ddd6fe}
-.ms-result{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;border:2px solid transparent;margin-bottom:6px;background:#f9fafb}
-.ms-result:hover{border-color:#667eea;background:#f0f0ff}
-.ms-img{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#e5e7eb}
-.ms-info{flex:1;min-width:0}
-.ms-title{font-weight:600;color:#1f2937;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
-.ms-artist{color:#6b7280;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
-.ms-badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;flex-shrink:0}
-.ms-badge.spotify{background:#d1fae5;color:#059669}
-.ms-badge.apple{background:#fee2e2;color:#dc2626}
-.ms-card{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f0f0ff;border:2px solid #667eea;border-radius:10px}
-.ms-rm{background:none;border:none;color:#9ca3af;font-size:18px;cursor:pointer;flex-shrink:0;padding:0 4px;line-height:1}
-.ms-rm:hover{color:#dc2626}
+.msearch-wrap{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #e5e7eb;border-radius:12px;padding:6px 14px}
+.msearch-wrap:focus-within{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.1)}
+.msearch-icon{color:#9ca3af;font-size:18px;flex-shrink:0;user-select:none}
+.msearch-input{flex:1;border:none;outline:none;font-size:15px;font-family:inherit;color:#1f2937;padding:6px 0;background:transparent;min-width:0}
+.msearch-input::placeholder{color:#9ca3af}
+.msearch-status{color:#9ca3af;font-size:12px;flex-shrink:0;white-space:nowrap}
+.mres-list{margin-top:6px;max-height:320px;overflow-y:auto;border-radius:10px}
+.mres-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;border:2px solid transparent;background:#f9fafb;margin-bottom:4px}
+.mres-item:hover,.mres-item.focus{border-color:#667eea;background:#f0f0ff}
+.mres-art{width:48px;height:48px;border-radius:7px;object-fit:cover;flex-shrink:0;background:#e5e7eb}
+.mres-info{flex:1;min-width:0}
+.mres-title{margin:0 0 2px;font-weight:600;color:#1f2937;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mres-sub{margin:0;color:#6b7280;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mres-msg{color:#9ca3af;font-size:14px;text-align:center;padding:14px 0}
+.mpick-card{display:flex;align-items:center;gap:14px;background:#f0f0ff;border:2px solid #667eea;border-radius:12px;padding:14px 16px}
+.mpick-art{width:54px;height:54px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#ddd6fe}
+.mpick-text{flex:1;min-width:0}
+.mpick-title{margin:0 0 3px;font-weight:700;color:#1f2937;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpick-artist{margin:0;color:#6b7280;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpick-actions{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.mpick-change{background:#ede9fe;color:#7c3aed;border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.mpick-change:hover{background:#ddd6fe}
+.mpick-remove{background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px;white-space:nowrap}
+.mpick-remove:hover{color:#ef4444}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -649,16 +654,28 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
       <input type="hidden" name="music_url" id="music-url-val" value="${esc(existing?.music_url || '')}">
-      <div id="music-sel" style="display:${existingMusic ? 'flex' : 'none'};align-items:center;gap:12px;" class="ms-card">
-        <div id="music-preview" style="flex:1;min-width:0;">${existingMusicPreviewHtml}</div>
-        <button type="button" class="ms-rm" id="music-clear-btn" title="Remove">✕</button>
-      </div>
-      <div id="music-search" style="display:${existingMusic ? 'none' : 'block'}">
-        <div class="ms-row">
-          <input type="text" id="music-q" placeholder="Search for a song or artist..." onkeydown="if(event.key==='Enter'){event.preventDefault();doMusicSearch();}">
-          <button type="button" class="ms-btn" id="ms-go" onclick="doMusicSearch()">Search</button>
+
+      <div id="music-picked" style="display:${existingMusic ? 'block' : 'none'}">
+        <div class="mpick-card">
+          <img id="mpick-art" class="mpick-art" src="${esc(existingMusic?.image || '')}" onerror="this.src=''" style="opacity:${existingMusic?.image ? '1' : '0'}">
+          <div class="mpick-text">
+            <p id="mpick-title" class="mpick-title">${esc(existingMusic?.title || '')}</p>
+            <p id="mpick-artist" class="mpick-artist">${esc(existingMusic?.artist || '')}</p>
+          </div>
+          <div class="mpick-actions">
+            <button type="button" class="mpick-change" onclick="musicChange()">Change</button>
+            <button type="button" class="mpick-remove" onclick="musicClear()">Remove</button>
+          </div>
         </div>
-        <div id="music-results"></div>
+      </div>
+
+      <div id="music-search-area" style="display:${existingMusic ? 'none' : 'block'}">
+        <div class="msearch-wrap">
+          <span class="msearch-icon">&#9835;</span>
+          <input type="text" id="music-q" class="msearch-input" placeholder="Search for a song or artist..." autocomplete="off" spellcheck="false" oninput="musicInput(this.value)">
+          <span id="music-status" class="msearch-status"></span>
+        </div>
+        <div id="music-results" class="mres-list"></div>
       </div>
 
       <button type="submit" class="sub-btn">Submit My Update</button>
@@ -678,55 +695,76 @@ function tab(id,btn){
   btn.classList.add('on');
   document.getElementById('tc-'+id).classList.add('on');
 }
-var _mhits=[];
-function doMusicSearch(){
-  var q=document.getElementById('music-q').value.trim();
-  if(!q)return;
-  var btn=document.getElementById('ms-go');
-  btn.textContent='...';btn.disabled=true;
+var _mhits=[],_mTimer=null,_mSeq=0;
+function musicInput(val){
+  clearTimeout(_mTimer);
+  var q=val.trim();
+  setMusicStatus('');
+  document.getElementById('music-results').innerHTML='';
+  if(!q){return;}
+  if(q.length<2){setMusicStatus('Keep typing...');return;}
+  setMusicStatus('Searching...');
+  _mTimer=setTimeout(function(){musicSearch(q);},380);
+}
+function musicSearch(q){
+  var seq=++_mSeq;
   fetch('/api/music-search?q='+encodeURIComponent(q))
     .then(function(r){return r.json();})
     .then(function(d){
-      btn.textContent='Search';btn.disabled=false;
+      if(seq!==_mSeq)return;
+      setMusicStatus('');
       _mhits=d.results||[];
-      var out='';
       if(!_mhits.length){
-        out='<p style="color:#9ca3af;font-size:14px;padding:6px 0;">No results found.</p>';
-      } else {
-        _mhits.forEach(function(r,i){
-          out+='<div class="ms-result" onclick="pickMusic('+i+')">'
-            +(r.image?'<img class="ms-img" src="'+mesc(r.image)+'" onerror="this.style.display=\'none\'">':'<div class="ms-img"></div>')
-            +'<div class="ms-info"><p class="ms-title">'+mesc(r.title)+'</p>'
-            +(r.artist?'<p class="ms-artist">'+mesc(r.artist)+(r.album?' &middot; <span style="opacity:.7">'+mesc(r.album)+'</span>':'')+'</p>':'')
-            +'</div></div>';
-        });
+        document.getElementById('music-results').innerHTML='<p class="mres-msg">No results. Try a different search.</p>';
+        return;
       }
+      var out='';
+      _mhits.forEach(function(r,i){
+        out+='<div class="mres-item" tabindex="0" onclick="musicPick('+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();musicPick('+i+');}">'
+          +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=\'0\'">'
+          +'<div class="mres-info">'
+          +'<p class="mres-title">'+mesc(r.title)+'</p>'
+          +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' · '+mesc(r.album):'')+'</p>'
+          +'</div></div>';
+      });
       document.getElementById('music-results').innerHTML=out;
     })
-    .catch(function(){btn.textContent='Search';btn.disabled=false;});
+    .catch(function(){
+      if(seq!==_mSeq)return;
+      setMusicStatus('');
+      document.getElementById('music-results').innerHTML='<p class="mres-msg">Search failed. Please try again.</p>';
+    });
 }
-function pickMusic(i){
+function musicPick(i){
   var r=_mhits[i];
-  var meta=JSON.stringify({title:r.title,artist:r.artist||'',image:r.image||''});
-  document.getElementById('music-url-val').value=meta;
-  document.getElementById('music-preview').innerHTML=
-    '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
-    +(r.image?'<img src="'+mesc(r.image)+'" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;">':'')
-    +'<div style="min-width:0;"><p class="ms-title">'+mesc(r.title)+'</p>'
-    +(r.artist?'<p class="ms-artist" style="margin-top:2px;">'+mesc(r.artist)+'</p>':'')
-    +'</div></div>';
-  document.getElementById('music-sel').style.display='flex';
-  document.getElementById('music-search').style.display='none';
+  document.getElementById('music-url-val').value=JSON.stringify({title:r.title,artist:r.artist||'',image:r.image||''});
+  var art=document.getElementById('mpick-art');
+  art.src=r.image||'';
+  art.style.opacity=r.image?'1':'0';
+  document.getElementById('mpick-title').textContent=r.title;
+  document.getElementById('mpick-artist').textContent=r.artist||'';
+  document.getElementById('music-picked').style.display='block';
+  document.getElementById('music-search-area').style.display='none';
 }
-function clearMusic(){
-  document.getElementById('music-url-val').value='';
-  document.getElementById('music-preview').innerHTML='';
-  document.getElementById('music-sel').style.display='none';
-  document.getElementById('music-search').style.display='block';
+function musicChange(){
+  document.getElementById('music-picked').style.display='none';
+  document.getElementById('music-search-area').style.display='block';
+  var q=document.getElementById('music-q');
+  q.value='';
   document.getElementById('music-results').innerHTML='';
-  document.getElementById('music-q').value='';
+  setMusicStatus('');
+  q.focus();
 }
-document.getElementById('music-clear-btn').addEventListener('click',clearMusic);
+function musicClear(){
+  document.getElementById('music-url-val').value='';
+  document.getElementById('music-picked').style.display='none';
+  document.getElementById('music-search-area').style.display='block';
+  document.getElementById('music-q').value='';
+  document.getElementById('music-results').innerHTML='';
+  setMusicStatus('');
+  document.getElementById('music-q').focus();
+}
+function setMusicStatus(msg){document.getElementById('music-status').textContent=msg;}
 function mesc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 </script>
 <p style="text-align:center;margin-top:24px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
