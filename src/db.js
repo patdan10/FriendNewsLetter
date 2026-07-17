@@ -145,7 +145,7 @@ module.exports = {
 
   // ─── Responses (JSON) ─────────────────────────────────────────────────────
 
-  saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename }) {
+  saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename, musicUrl }) {
     withDb(db => {
       const existing = db.responses.find(r => r.newsletter_id === newsletterId && r.email === email);
       const entry = {
@@ -153,6 +153,7 @@ module.exports = {
         answers, links: links || [],
         image_url: imageUrl || null,
         image_filename: imageFilename || null,
+        music_url: musicUrl || null,
         submitted_at: new Date().toISOString()
       };
       if (existing) Object.assign(existing, entry);
@@ -176,13 +177,14 @@ module.exports = {
     return load().responses.find(r => r.id === id) || null;
   },
 
-  patchResponse(id, { imageUrl, imageFilename, links }) {
+  patchResponse(id, { imageUrl, imageFilename, links, musicUrl }) {
     withDb(db => {
       const r = db.responses.find(r => r.id === id);
       if (!r) return;
       r.image_url = imageUrl || null;
       r.image_filename = imageFilename !== undefined ? imageFilename : r.image_filename;
       r.links = links || [];
+      r.music_url = musicUrl || null;
     });
   },
 

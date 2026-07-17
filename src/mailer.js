@@ -104,7 +104,21 @@ function buildFormEmail({ name, month, year, questions, formUrl }) {
 </table></body></html>`;
 }
 
-function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUrl }) {
+function musicEmbedUrl(url) {
+  if (!url) return null;
+  const spotify = url.match(/open\.spotify\.com\/(track|album|playlist|show|episode)\/([^?&/]+)/);
+  if (spotify) return `https://open.spotify.com/embed/${spotify[1]}/${spotify[2]}`;
+  if (/music\.apple\.com\//.test(url)) return url.replace('music.apple.com', 'embed.music.apple.com');
+  return null;
+}
+
+function musicServiceName(url) {
+  if (/spotify\.com/.test(url)) return 'Spotify';
+  if (/apple\.com/.test(url)) return 'Apple Music';
+  return 'Music';
+}
+
+function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUrl, isEmail = false }) {
   const monthName = MONTHS[month - 1];
 
   const personHue = name => [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
@@ -139,8 +153,8 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 </div>`;
   }).join('');
 
-  // Photos & links grouped by person at the bottom
-  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map((r, i, arr) => {
+  // Photos, links & music grouped by person at the bottom
+  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length || r.music_url).map((r, i, arr) => {
     const name = r.name || r.email;
     const h = personHue(name);
     const last = i === arr.length - 1;
@@ -149,10 +163,16 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
     const linksHtml = r.links?.length
       ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')
       : '';
+    const embedUrl = musicEmbedUrl(r.music_url);
+    const musicHtml = embedUrl
+      ? isEmail
+        ? `<div style="margin-top:8px;"><a href="${esc(r.music_url)}" style="display:inline-block;background:#f0fdf4;color:#16a34a;text-decoration:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">♪ Listen on ${musicServiceName(r.music_url)}</a></div>`
+        : `<div style="margin-top:8px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>`
+      : '';
     return `
 <div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
   <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
-  ${imgHtml}${linksHtml}
+  ${imgHtml}${linksHtml}${musicHtml}
 </div>`;
   }).join('');
 
@@ -199,7 +219,7 @@ async function sendCompiledEmail({ toEmail, toName, newsletter, responses, baseU
   return deliver({
     toEmail, toName,
     subject: `📰 ${MONTHS[newsletter.month - 1]} ${newsletter.year} The Horseback Times`,
-    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl })
+    html: buildCompiledEmail({ month: newsletter.month, year: newsletter.year, questions: newsletter.questions, responses, baseUrl, editUrl, isEmail: true })
   });
 }
 

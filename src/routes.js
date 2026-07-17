@@ -110,6 +110,7 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
     const name = subscriber?.name || email;
     const imageUrl = (req.body.image_url || '').trim();
     const imageFilename = req.file ? path.basename(req.file.path) : null;
+    const musicUrl = (req.body.music_url || '').trim();
 
     const linkLabels = [].concat(req.body.link_label || []);
     const linkUrls = [].concat(req.body.link_url || []);
@@ -117,7 +118,7 @@ router.post('/form/:token', upload.single('image'), (req, res) => {
       .map((url, i) => ({ url: normalizeUrl(url.trim()), label: (linkLabels[i] || '').trim() }))
       .filter(l => l.url);
 
-    db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename });
+    db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename, musicUrl });
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     sendAdminNotification({ responderName: name, newsletter, baseUrl }).catch(() => {});
     res.send(thankYouPage(MONTHS[newsletter.month - 1], newsletter.year, `${baseUrl}/form/${req.params.token}`));
@@ -331,7 +332,8 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
     .map((url, i) => ({ url: normalizeUrl(url.trim()), label: (linkLabels[i] || '').trim() }))
     .filter(l => l.url);
 
-  db.patchResponse(response.id, { imageUrl, imageFilename, links });
+  const musicUrl = (req.body.music_url || '').trim();
+  db.patchResponse(response.id, { imageUrl, imageFilename, links, musicUrl });
   res.redirect('/admin/responses');
 });
 
@@ -479,6 +481,10 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
       </div>
       <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
+
+      <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
+      <p class="sec-sub">Paste a Spotify or Apple Music link</p>
+      <input type="text" name="music_url" placeholder="https://open.spotify.com/track/... or https://music.apple.com/..." value="${esc(existing?.music_url || '')}">
 
       <button type="submit" class="sub-btn">Submit My Update</button>
     </form>
