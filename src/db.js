@@ -17,12 +17,18 @@ const DEFAULT_DB = {
 
 // ─── JSON db ──────────────────────────────────────────────────────────────────
 
+let _cache = null;
+
 function load() {
-  if (!fs.existsSync(DB_FILE)) return JSON.parse(JSON.stringify(DEFAULT_DB));
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  if (_cache) return _cache;
+  _cache = fs.existsSync(DB_FILE)
+    ? JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
+    : JSON.parse(JSON.stringify(DEFAULT_DB));
+  return _cache;
 }
 
 function save(data) {
+  _cache = data;
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, DB_FILE);
