@@ -680,6 +680,7 @@ function tab(id,btn){
   btn.classList.add('on');
   document.getElementById('tc-'+id).classList.add('on');
 }
+document.getElementById('music-q').addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
 var _mhits=[],_mTimer=null,_mSeq=0;
 function musicInput(val){
   clearTimeout(_mTimer);
@@ -712,27 +713,27 @@ function musicRender(hits){
 }
 function musicSearch(q){
   var seq=++_mSeq;
-  fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}})
+  fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8')
     .then(function(r){return r.json();})
     .then(function(d){
       if(seq!==_mSeq)return;
       setMusicStatus('');
-      _mhits=(d.recordings||[]).map(function(rec){
-        var rel=(rec.releases||[])[0];
-        var rgid=rel&&rel['release-group']&&rel['release-group'].id;
-        return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
-      });
+      _mhits=(d.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
       if(_mhits.length){musicRender(_mhits);return;}
       throw new Error('no results');
     })
     .catch(function(){
       if(seq!==_mSeq)return;
-      fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8')
+      fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}})
         .then(function(r){return r.json();})
         .then(function(d){
           if(seq!==_mSeq)return;
           setMusicStatus('');
-          _mhits=(d.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
+          _mhits=(d.recordings||[]).map(function(rec){
+            var rel=(rec.releases||[])[0];
+            var rgid=rel&&rel['release-group']&&rel['release-group'].id;
+            return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
+          });
           musicRender(_mhits);
         })
         .catch(function(){
