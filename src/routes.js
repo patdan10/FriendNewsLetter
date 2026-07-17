@@ -5,7 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification } = require('./mailer');
+const { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification, setTestMode, isTestMode } = require('./mailer');
 const { sendFormEmails, sendCompiledEmails } = require('./scheduler');
 
 const router = express.Router();
@@ -147,7 +147,7 @@ router.get('/', (req, res) => {
 });
 
 router.get('/admin', (req, res) => {
-  res.send(dashboardPage({ ...getDashboardData(), isAdmin: true }));
+  res.send(dashboardPage({ ...getDashboardData(), isAdmin: true, testMode: isTestMode() }));
 });
 
 router.post('/admin/send-form', async (req, res) => {
@@ -258,48 +258,72 @@ router.get('/admin/send-reminders/stream', (req, res) => {
   });
 });
 
-router.get('/admin/send-test/stream', (req, res) => {
+const TEST_EMAIL = process.env.TEST_EMAIL || 'patrick@danielsonweb.com';
+const TEST_NAME = 'Patrick';
+
+router.post('/admin/test-mode', (req, res) => {
+  const enable = req.body.enable === 'true' || req.body.enable === true;
+  setTestMode(enable);
+  res.json({ testMode: isTestMode() });
+});
+
+router.get('/admin/send-test/:type/stream', (req, res) => {
+  const type = req.params.type;
   sseStream(res, async (emit) => {
     const now = new Date();
     const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const from = process.env.FROM_EMAIL || '';
-    const m = from.match(/<([^>]+)>/) || ['', from.trim()];
-    const adminEmail = m[1].trim();
 
-    if (!adminEmail) {
-      emit('err', '✗ No email found — set FROM_EMAIL in your environment');
-      return;
+    emit('info', `Sending to ${TEST_EMAIL}...`);
+
+    if (type === 'form' || type === 'all') {
+      emit('sending', '→ Form email');
+      try {
+        await sendFormEmail({ toEmail: TEST_EMAIL, toName: TEST_NAME, newsletter, baseUrl });
+        emit('ok', '✓ Form email sent');
+      } catch (e) { emit('err', `✗ Form email: ${e.message}`); }
     }
 
-    emit('info', `Sending test emails to ${adminEmail}...`);
-
-    emit('sending', '→ Test form email');
-    try {
-      await sendFormEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, baseUrl });
-      emit('ok', `✓ Form email sent`);
-    } catch (e) {
-      emit('err', `✗ Form email failed: ${e.message}`);
+    if (type === 'reminder' || type === 'all') {
+      emit('sending', '→ Reminder email');
+      try {
+        await sendReminderEmail({ toEmail: TEST_EMAIL, toName: TEST_NAME, newsletter, baseUrl });
+        emit('ok', '✓ Reminder email sent');
+      } catch (e) { emit('err', `✗ Reminder email: ${e.message}`); }
     }
 
-    emit('sending', '→ Test reminder email');
-    try {
-      await sendReminderEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, baseUrl });
-      emit('ok', `✓ Reminder email sent`);
-    } catch (e) {
-      emit('err', `✗ Reminder email failed: ${e.message}`);
+    if (type === 'results' || type === 'all') {
+      emit('sending', '→ Compiled results email');
+      try {
+        const responses = db.getResponses(newsletter.id);
+        await sendCompiledEmail({ toEmail: TEST_EMAIL, toName: TEST_NAME, newsletter, responses, baseUrl });
+        emit('ok', `✓ Results email sent (${responses.length} response${responses.length !== 1 ? 's' : ''} included)`);
+      } catch (e) { emit('err', `✗ Results email: ${e.message}`); }
     }
 
-    emit('sending', '→ Test compiled email');
-    try {
-      const responses = db.getResponses(newsletter.id);
-      await sendCompiledEmail({ toEmail: adminEmail, toName: 'Admin', newsletter, responses, baseUrl });
-      emit('ok', `✓ Compiled email sent`);
-    } catch (e) {
-      emit('err', `✗ Compiled email failed: ${e.message}`);
+    if (type === 'comment' || type === 'all') {
+      emit('sending', '→ Comment notification email');
+      try {
+        sendCommentNotification({
+          subscribers: [{ email: TEST_EMAIL, name: TEST_NAME }],
+          commenterEmail: null,
+          commenterName: 'Test Commenter',
+          commentText: 'This is what a comment notification email looks like!',
+          questionText: newsletter.questions[0] || 'What was your highlight this month?',
+          responderName: 'Test Responder',
+          newsletter,
+          baseUrl,
+          parentCommentAuthor: null
+        });
+        emit('ok', '✓ Comment notification queued');
+      } catch (e) { emit('err', `✗ Comment notification: ${e.message}`); }
     }
 
-    emit('done', `All test emails sent to ${adminEmail}`);
+    if (!['form', 'reminder', 'results', 'comment', 'all'].includes(type)) {
+      emit('err', `Unknown test type: ${type}`);
+    }
+
+    emit('done', 'Done');
   });
 });
 
@@ -596,7 +620,7 @@ p{color:#6b7280;font-size:15px;line-height:1.7}
 </body></html>`;
 }
 
-function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl, isAdmin }) {
+function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl, isAdmin, testMode = false }) {
   const monthName = MONTHS[newsletter.month - 1];
   const rate = subscribers.length ? Math.round((responses.length / subscribers.length) * 100) : 0;
 
@@ -714,15 +738,41 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
   </div>
 
   ${isAdmin ? `
+  ${testMode ? `<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <span style="font-size:20px;">⚠️</span>
+    <div>
+      <strong style="color:#92400e;">Test Mode is ON</strong>
+      <span style="color:#78350f;font-size:14px;margin-left:8px;">All emails redirect to ${TEST_EMAIL}</span>
+    </div>
+    <button class="btn" onclick="toggleTestMode(false)" style="margin-left:auto;background:#f59e0b;color:#fff;padding:8px 16px;">Disable</button>
+  </div>` : ''}
   <div class="card">
     <h2>Actions</h2>
     <div class="actions">
       <button class="btn btn-p" onclick="act('send-form')">📧 Send Form Emails</button>
       <button class="btn btn-s" onclick="act('send-reminders')">⏰ Send Reminders</button>
       <button class="btn btn-s" onclick="act('send-results')">📰 Send Compiled Results</button>
-      <button class="btn btn-s" onclick="act('send-test')" style="border:2px dashed #d1d5db;">🧪 Test: Send to Me</button>
     </div>
     <div id="log"></div>
+  </div>
+  <div class="card">
+    <h2>Test Emails</h2>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 16px;">Send samples to <strong>${TEST_EMAIL}</strong>. Enable Test Mode to redirect ALL outgoing emails there instead of real subscribers.</p>
+    <div class="actions" style="flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-s" onclick="runTest('form')" style="border:2px dashed #a78bfa;">📝 Form</button>
+      <button class="btn btn-s" onclick="runTest('reminder')" style="border:2px dashed #a78bfa;">⏰ Reminder</button>
+      <button class="btn btn-s" onclick="runTest('results')" style="border:2px dashed #a78bfa;">📰 Results</button>
+      <button class="btn btn-s" onclick="runTest('comment')" style="border:2px dashed #a78bfa;">💬 Comment</button>
+      <button class="btn btn-s" onclick="runTest('all')" style="border:2px dashed #a78bfa;background:#ede9fe;">🧪 All</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin-bottom:12px;">
+      <span style="font-size:14px;color:#374151;font-weight:600;">Test Mode - redirect all real sends</span>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-left:auto;">
+        <input type="checkbox" id="testModeToggle" ${testMode ? 'checked' : ''} onchange="toggleTestMode(this.checked)" style="width:18px;height:18px;cursor:pointer;">
+        <span style="font-size:14px;color:#6b7280;" id="testModeLabel">${testMode ? 'On' : 'Off'}</span>
+      </label>
+    </div>
+    <div id="test-log"></div>
   </div>` : ''}
 
   <div class="card">
@@ -825,6 +875,35 @@ function act(action){
     const p=document.createElement('p');p.className='ll le';p.textContent='Connection lost';
     log.appendChild(p);src.close();
   };
+}
+function runTest(type){
+  const log=document.getElementById('test-log');
+  log.innerHTML='';log.style.display='block';
+  const cls={info:'li',sending:'ls',ok:'lo',err:'le',warn:'lw',done:'ld'};
+  const src=new EventSource('/admin/send-test/'+type+'/stream');
+  src.onmessage=e=>{
+    const {type:t,text}=JSON.parse(e.data);
+    const p=document.createElement('p');
+    p.className='ll '+(cls[t]||'ls');
+    p.textContent=text;
+    log.appendChild(p);
+    log.scrollTop=log.scrollHeight;
+    if(t==='done')src.close();
+  };
+  src.onerror=()=>{
+    const p=document.createElement('p');p.className='ll le';p.textContent='Connection lost';
+    log.appendChild(p);src.close();
+  };
+}
+function toggleTestMode(enable){
+  fetch('/admin/test-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable})})
+    .then(r=>r.json()).then(d=>{
+      const chk=document.getElementById('testModeToggle');
+      const lbl=document.getElementById('testModeLabel');
+      if(chk)chk.checked=d.testMode;
+      if(lbl)lbl.textContent=d.testMode?'On':'Off';
+      location.reload();
+    });
 }
 document.addEventListener('click',e=>{
   const btn=e.target.closest('.copy-btn');

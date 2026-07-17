@@ -3,6 +3,10 @@ const nodemailer = require('nodemailer');
 const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
 
+let _testMode = false;
+const TEST_OVERRIDE_EMAIL = process.env.TEST_EMAIL || 'patrick@danielsonweb.com';
+const TEST_OVERRIDE_NAME = 'Patrick';
+
 // ─── Sender: Brevo (HTTPS API) or Ethereal (local dev) ───────────────────────
 
 async function sendViaBrevo({ fromName, fromEmail, toEmail, toName, subject, html }) {
@@ -46,6 +50,11 @@ function parseFrom(from) {
 }
 
 async function deliver({ toEmail, toName, subject, html }) {
+  if (_testMode) {
+    subject = `[TEST to ${toName} <${toEmail}>] ${subject}`;
+    toEmail = TEST_OVERRIDE_EMAIL;
+    toName = TEST_OVERRIDE_NAME;
+  }
   const from = process.env.FROM_EMAIL || '"The Horseback Times" <newsletter@example.com>';
   if (process.env.BREVO_API_KEY) {
     const { fromName, fromEmail } = parseFrom(from);
@@ -312,7 +321,9 @@ function buildCommentEmail({ toName, commenterName, commentText, questionText, r
 
 async function sendCommentNotification({ subscribers, commenterEmail, commenterName, commentText, questionText, responderName, newsletter, baseUrl, parentCommentAuthor }) {
   const monthName = MONTHS[newsletter.month - 1];
-  const notify = commenterEmail ? subscribers.filter(s => s.email !== commenterEmail) : subscribers;
+  const notify = _testMode
+    ? [{ email: TEST_OVERRIDE_EMAIL, name: TEST_OVERRIDE_NAME }]
+    : (commenterEmail ? subscribers.filter(s => s.email !== commenterEmail) : subscribers);
   for (const sub of notify) {
     const token = makeToken(newsletter.id, sub.email);
     const viewUrl = `${baseUrl}/newsletter/${newsletter.id}?token=${token}`;
@@ -325,4 +336,4 @@ async function sendCommentNotification({ subscribers, commenterEmail, commenterN
   }
 }
 
-module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification };
+module.exports = { makeToken, parseToken, sendFormEmail, sendCompiledEmail, sendReminderEmail, sendAdminNotification, buildCompiledEmail, sendCommentNotification, setTestMode: (on) => { _testMode = !!on; }, isTestMode: () => _testMode };
