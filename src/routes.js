@@ -491,6 +491,64 @@ router.post('/admin/reset', (req, res) => {
   res.redirect('/admin');
 });
 
+// ─── Music search ────────────────────────────────────────────────────────────
+
+let _spotifyToken = null;
+let _spotifyTokenExpiry = 0;
+
+async function getSpotifyToken() {
+  if (_spotifyToken && Date.now() < _spotifyTokenExpiry) return _spotifyToken;
+  const id = process.env.SPOTIFY_CLIENT_ID;
+  const secret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  try {
+    const creds = Buffer.from(`${id}:${secret}`).toString('base64');
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=client_credentials'
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    _spotifyToken = d.access_token;
+    _spotifyTokenExpiry = Date.now() + (d.expires_in - 60) * 1000;
+    return _spotifyToken;
+  } catch { return null; }
+}
+
+router.get('/api/music-search', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (q.length < 2) return res.json({ results: [] });
+  const results = [];
+
+  try {
+    const token = await getSpotifyToken();
+    if (token) {
+      const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=5`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (r.ok) {
+        const d = await r.json();
+        for (const t of (d.tracks?.items || [])) {
+          results.push({ service: 'spotify', title: t.name, artist: t.artists.map(a => a.name).join(', '), image: t.album.images[1]?.url || t.album.images[0]?.url || '', url: t.external_urls.spotify });
+        }
+      }
+    }
+  } catch (e) { console.error('Spotify search:', e.message); }
+
+  try {
+    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=5`);
+    if (r.ok) {
+      const d = await r.json();
+      for (const t of (d.results || [])) {
+        results.push({ service: 'apple', title: t.trackName, artist: t.artistName, image: t.artworkUrl100 || '', url: t.trackViewUrl });
+      }
+    }
+  } catch (e) { console.error('iTunes search:', e.message); }
+
+  res.json({ results });
+});
+
 // ─── HTML templates ──────────────────────────────────────────────────────────
 
 const BASE_STYLE = `
@@ -546,6 +604,22 @@ input:focus,textarea:focus{outline:none;border-color:#667eea}
 input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius:10px;cursor:pointer}
 .sub-btn{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:16px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:28px}
 .sub-btn:hover{opacity:.9}
+.ms-row{display:flex;gap:8px;margin-bottom:10px}
+.ms-row input{flex:1;min-width:0}
+.ms-btn{background:#ede9fe;color:#7c3aed;border:none;padding:11px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;flex-shrink:0}
+.ms-btn:hover{background:#ddd6fe}
+.ms-result{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;border:2px solid transparent;margin-bottom:6px;background:#f9fafb}
+.ms-result:hover{border-color:#667eea;background:#f0f0ff}
+.ms-img{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#e5e7eb}
+.ms-info{flex:1;min-width:0}
+.ms-title{font-weight:600;color:#1f2937;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+.ms-artist{color:#6b7280;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+.ms-badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;flex-shrink:0}
+.ms-badge.spotify{background:#d1fae5;color:#059669}
+.ms-badge.apple{background:#fee2e2;color:#dc2626}
+.ms-card{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f0f0ff;border:2px solid #667eea;border-radius:10px}
+.ms-rm{background:none;border:none;color:#9ca3af;font-size:18px;cursor:pointer;flex-shrink:0;padding:0 4px;line-height:1}
+.ms-rm:hover{color:#dc2626}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -569,8 +643,20 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
       <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
-      <p class="sec-sub">Paste a Spotify or Apple Music link</p>
-      <input type="text" name="music_url" placeholder="https://open.spotify.com/track/... or https://music.apple.com/..." value="${esc(existing?.music_url || '')}">
+      <input type="hidden" name="music_url" id="music-url-val" value="${esc(existing?.music_url || '')}">
+      <div id="music-sel" style="display:${existing?.music_url ? 'flex' : 'none'};align-items:center;gap:12px;" class="ms-card">
+        <div id="music-preview" style="flex:1;">
+          ${existing?.music_url ? `<p class="ms-title">♪ ${/spotify/.test(existing.music_url) ? 'Spotify' : 'Apple Music'} track linked</p><p class="ms-artist" style="margin-top:2px;">Search to change</p>` : ''}
+        </div>
+        <button type="button" class="ms-rm" onclick="clearMusic()" title="Remove">✕</button>
+      </div>
+      <div id="music-search" style="display:${existing?.music_url ? 'none' : 'block'}">
+        <div class="ms-row">
+          <input type="text" id="music-q" placeholder="Search for a song or artist..." onkeydown="if(event.key==='Enter'){event.preventDefault();doMusicSearch();}">
+          <button type="button" class="ms-btn" id="ms-go" onclick="doMusicSearch()">Search</button>
+        </div>
+        <div id="music-results"></div>
+      </div>
 
       <button type="submit" class="sub-btn">Submit My Update</button>
     </form>
@@ -589,6 +675,53 @@ function tab(id,btn){
   btn.classList.add('on');
   document.getElementById('tc-'+id).classList.add('on');
 }
+var _mhits=[];
+function doMusicSearch(){
+  var q=document.getElementById('music-q').value.trim();
+  if(!q)return;
+  var btn=document.getElementById('ms-go');
+  btn.textContent='...';btn.disabled=true;
+  fetch('/api/music-search?q='+encodeURIComponent(q))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      btn.textContent='Search';btn.disabled=false;
+      _mhits=d.results||[];
+      var out='';
+      if(!_mhits.length){
+        out='<p style="color:#9ca3af;font-size:14px;padding:6px 0;">No results found.</p>';
+      } else {
+        _mhits.forEach(function(r,i){
+          var svc=r.service==='spotify'?'Spotify':'Apple Music';
+          out+='<div class="ms-result" onclick="pickMusic('+i+')">'
+            +(r.image?'<img class="ms-img" src="'+mesc(r.image)+'" onerror="this.style.display=\'none\'">':'<div class="ms-img"></div>')
+            +'<div class="ms-info"><p class="ms-title">'+mesc(r.title)+'</p><p class="ms-artist">'+mesc(r.artist)+'</p></div>'
+            +'<span class="ms-badge '+r.service+'">'+svc+'</span></div>';
+        });
+      }
+      document.getElementById('music-results').innerHTML=out;
+    })
+    .catch(function(){btn.textContent='Search';btn.disabled=false;});
+}
+function pickMusic(i){
+  var r=_mhits[i];
+  document.getElementById('music-url-val').value=r.url;
+  var svc=r.service==='spotify'?'Spotify':'Apple Music';
+  document.getElementById('music-preview').innerHTML=
+    '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
+    +(r.image?'<img src="'+mesc(r.image)+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0;">':'')
+    +'<div style="min-width:0;"><p class="ms-title">'+mesc(r.title)+'</p><p class="ms-artist" style="margin-top:2px;">'+mesc(r.artist)+' · '+svc+'</p></div></div>';
+  document.getElementById('music-sel').style.display='flex';
+  document.getElementById('music-search').style.display='none';
+}
+function clearMusic(){
+  document.getElementById('music-url-val').value='';
+  document.getElementById('music-preview').innerHTML='';
+  document.getElementById('music-sel').style.display='none';
+  document.getElementById('music-search').style.display='block';
+  document.getElementById('music-results').innerHTML='';
+  document.getElementById('music-q').value='';
+}
+function mesc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 </script>
 <p style="text-align:center;margin-top:24px;"><a href="/admin" style="color:#d1d5db;font-size:12px;text-decoration:none;">Admin</a></p>
 </body></html>`;
@@ -988,6 +1121,9 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
       </div>
       <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg"></div>
+
+      <div class="sec">🎵 Music</div>
+      <input type="text" name="music_url" placeholder="Spotify or Apple Music URL" value="${esc(response.music_url || '')}">
 
       <button type="submit" class="save-btn">Save Changes</button>
     </form>
