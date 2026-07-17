@@ -14,6 +14,11 @@ async function sendFormEmails(force = false) {
     return { message: 'Form emails already sent this month', skipped: true };
   }
 
+  // Always use the current questions list at send time
+  const currentQuestions = db.getQuestions();
+  db.updateNewsletterQuestions(newsletter.id, currentQuestions);
+  newsletter.questions = currentQuestions;
+
   const subscribers = db.getSubscribers();
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   console.log(`\nSending form emails to ${subscribers.length} subscriber(s)...`);

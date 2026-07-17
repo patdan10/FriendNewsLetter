@@ -139,6 +139,10 @@ module.exports = {
     withDb(db => { const nl = db.newsletters.find(n => n.id === id); if (nl) nl.form_sent = true; });
   },
 
+  updateNewsletterQuestions(id, questions) {
+    withDb(db => { const nl = db.newsletters.find(n => n.id === id); if (nl) nl.questions = questions; });
+  },
+
   markResultsSent(id) {
     withDb(db => { const nl = db.newsletters.find(n => n.id === id); if (nl) nl.results_sent = true; });
   },
