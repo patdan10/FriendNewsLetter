@@ -563,7 +563,8 @@ function dashboardPage({ newsletter, responses, subscribers, questions, baseUrl,
   }).join('');
 
   const questionInputs = questions.map((q, i) => `
-    <div class="q-row">
+    <div class="q-row" draggable="true">
+      <span class="drag-handle">⠿</span>
       <span class="q-num">${i + 1}.</span>
       <input type="text" name="question" value="${esc(q)}" placeholder="Question...">
       <button type="button" class="rm-btn" onclick="rmQuestion(this)">✕</button>
@@ -614,6 +615,9 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 .save-btn{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
 .q-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .q-num{color:#9ca3af;font-size:13px;min-width:20px;text-align:right;flex-shrink:0}
+.drag-handle{color:#d1d5db;cursor:grab;font-size:18px;padding:0 2px;user-select:none;flex-shrink:0;line-height:1}
+.drag-handle:active{cursor:grabbing}
+.q-row.drag-over{border-top:2px solid #667eea;margin-top:-2px}
 .q-row input{flex:1;padding:9px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;color:#1f2937}
 .q-row input:focus{outline:none;border-color:#667eea}
 .edit-btn{background:#e0e7ff;color:#4338ca;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;margin-right:4px;}
@@ -706,14 +710,37 @@ th{font-weight:600;color:#6b7280;font-size:12px;text-transform:uppercase;letter-
 function addQuestion(){
   const list=document.getElementById('q-list');
   const n=list.children.length+1;
-  const d=document.createElement('div');d.className='q-row';
-  d.innerHTML='<span class="q-num">'+n+'.</span><input type="text" name="question" placeholder="New question..."><button type="button" class="rm-btn" onclick="rmQuestion(this)">&#x2715;</button>';
+  const d=document.createElement('div');d.className='q-row';d.draggable=true;
+  d.innerHTML='<span class="drag-handle">&#x2807;</span><span class="q-num">'+n+'.</span><input type="text" name="question" placeholder="New question..."><button type="button" class="rm-btn" onclick="rmQuestion(this)">&#x2715;</button>';
   list.appendChild(d);d.querySelector('input').focus();
 }
 function rmQuestion(btn){
   btn.parentElement.remove();
   document.querySelectorAll('.q-num').forEach((el,i)=>el.textContent=(i+1)+'.');
 }
+(function(){
+  let src=null;
+  const list=document.getElementById('q-list');
+  list.addEventListener('dragstart',e=>{src=e.target.closest('.q-row');e.dataTransfer.effectAllowed='move';});
+  list.addEventListener('dragover',e=>{
+    e.preventDefault();
+    const row=e.target.closest('.q-row');
+    list.querySelectorAll('.q-row').forEach(r=>r.classList.remove('drag-over'));
+    if(row&&row!==src)row.classList.add('drag-over');
+  });
+  list.addEventListener('dragleave',e=>{if(!list.contains(e.relatedTarget))list.querySelectorAll('.q-row').forEach(r=>r.classList.remove('drag-over'));});
+  list.addEventListener('drop',e=>{
+    e.preventDefault();
+    const row=e.target.closest('.q-row');
+    if(row&&row!==src){
+      const rows=[...list.children];
+      if(rows.indexOf(src)<rows.indexOf(row))row.after(src);else row.before(src);
+      list.querySelectorAll('.q-num').forEach((el,i)=>el.textContent=(i+1)+'.');
+    }
+    list.querySelectorAll('.q-row').forEach(r=>r.classList.remove('drag-over'));
+  });
+  list.addEventListener('dragend',()=>list.querySelectorAll('.q-row').forEach(r=>r.classList.remove('drag-over')));
+})();
 ${isAdmin ? `
 function act(action){
   const log=document.getElementById('log');
