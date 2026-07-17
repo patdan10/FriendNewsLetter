@@ -3,70 +3,69 @@ const path = require('path');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
-const SUBSCRIBERS_CSV = path.join(DATA_DIR, 'subscribers.csv');
-const QUESTIONS_CSV = path.join(DATA_DIR, 'questions.csv');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// On first deploy, seed from repo copies
-const rootSubscribersCSV = path.join(__dirname, '..', 'subscribers.csv');
-if (!fs.existsSync(SUBSCRIBERS_CSV) && fs.existsSync(rootSubscribersCSV)) {
-  fs.copyFileSync(rootSubscribersCSV, SUBSCRIBERS_CSV);
-}
-const rootQuestionsCSV = path.join(__dirname, '..', 'questions.csv');
-if (!fs.existsSync(QUESTIONS_CSV) && fs.existsSync(rootQuestionsCSV)) {
-  fs.copyFileSync(rootQuestionsCSV, QUESTIONS_CSV);
-}
+const DEFAULT_DB = {
+  subscribers: [],
+  questions: [],
+  newsletters: [],
+  responses: [],
+  comments: [],
+  _nextId: { newsletter: 1, response: 1, comment: 1 }
+};
 
-// ─── CSV helpers ─────────────────────────────────────────────────────────────
+// ─── CSV migration helper (read-only, used once) ──────────────────────────────
 
-function splitCSVLine(line) {
-  const result = [];
-  let cur = '', inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (c === ',' && !inQ) {
-      result.push(cur); cur = '';
-    } else cur += c;
-  }
-  result.push(cur);
-  return result;
-}
-
-function readCSV(file) {
-  if (!fs.existsSync(file)) return [];
-  const lines = fs.readFileSync(file, 'utf8').trim().split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const headers = splitCSVLine(lines[0]).map(h => h.trim());
-  return lines.slice(1).map(line => {
-    const vals = splitCSVLine(line);
-    return Object.fromEntries(headers.map((h, i) => [h, (vals[i] || '').trim()]));
-  });
+function _csvMigrate(file) {
+  const candidates = [path.join(DATA_DIR, file), path.join(__dirname, '..', file)];
+  const src = candidates.find(f => fs.existsSync(f));
+  if (!src) return [];
+  try {
+    const lines = fs.readFileSync(src, 'utf8').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+    return lines.slice(1).map(line => {
+      const vals = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+        else if (c === ',' && !inQ) { vals.push(cur); cur = ''; }
+        else cur += c;
+      }
+      vals.push(cur);
+      return Object.fromEntries(headers.map((h, i) => [h, (vals[i] || '').replace(/^"|"$/g, '').trim()]));
+    });
+  } catch { return []; }
 }
 
-function csvQuote(val) {
-  const s = String(val || '');
-  return /[,"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-function writeCSV(file, headers, rows) {
-  const out = [
-    headers.join(','),
-    ...rows.map(r => headers.map(h => csvQuote(r[h])).join(','))
-  ].join('\r\n') + '\r\n';
-  fs.writeFileSync(file, out);
-}
-
-// ─── JSON db (responses + newsletter state only) ──────────────────────────────
-
-const DEFAULT_DB = { newsletters: [], responses: [], comments: [], _nextId: { newsletter: 1, response: 1, comment: 1 } };
+// ─── JSON db ──────────────────────────────────────────────────────────────────
 
 function load() {
-  if (!fs.existsSync(DB_FILE)) { save(DEFAULT_DB); return DEFAULT_DB; }
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  let db;
+  if (!fs.existsSync(DB_FILE)) {
+    db = JSON.parse(JSON.stringify(DEFAULT_DB));
+  } else {
+    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  }
+
+  let dirty = false;
+
+  if (!Array.isArray(db.subscribers)) {
+    db.subscribers = _csvMigrate('subscribers.csv')
+      .filter(r => r.email)
+      .map(r => ({ name: r.name || '', email: r.email }));
+    dirty = true;
+  }
+
+  if (!Array.isArray(db.questions)) {
+    db.questions = _csvMigrate('questions.csv').map(r => r.question).filter(Boolean);
+    dirty = true;
+  }
+
+  if (dirty) save(db);
+  return db;
 }
 
 function save(data) {
@@ -82,49 +81,43 @@ function withDb(fn) {
   return result;
 }
 
-// ─── Subscribers (CSV) ────────────────────────────────────────────────────────
+// ─── Subscribers ──────────────────────────────────────────────────────────────
 
 module.exports = {
   getSubscribers() {
-    return readCSV(SUBSCRIBERS_CSV).filter(r => r.email);
+    return load().subscribers.filter(s => s.email);
   },
 
   addSubscriber(email, name) {
-    const rows = readCSV(SUBSCRIBERS_CSV);
-    if (rows.find(r => r.email === email)) {
-      // update name if already present
-      rows.find(r => r.email === email).name = name;
-    } else {
-      rows.push({ name, email });
-    }
-    writeCSV(SUBSCRIBERS_CSV, ['name', 'email'], rows);
+    withDb(db => {
+      const existing = db.subscribers.find(s => s.email === email);
+      if (existing) existing.name = name;
+      else db.subscribers.push({ name: name || '', email });
+    });
   },
 
   removeSubscriber(email) {
-    const rows = readCSV(SUBSCRIBERS_CSV).filter(r => r.email !== email);
-    writeCSV(SUBSCRIBERS_CSV, ['name', 'email'], rows);
+    withDb(db => { db.subscribers = db.subscribers.filter(s => s.email !== email); });
   },
 
-  // ─── Questions (CSV) ───────────────────────────────────────────────────────
+  // ─── Questions ──────────────────────────────────────────────────────────────
 
   getQuestions() {
-    const rows = readCSV(QUESTIONS_CSV);
-    return rows.map(r => r.question).filter(Boolean);
+    return load().questions.filter(Boolean);
   },
 
   saveQuestions(questions) {
-    writeCSV(QUESTIONS_CSV, ['question'], questions.map(q => ({ question: q })));
+    withDb(db => { db.questions = questions.filter(Boolean); });
   },
 
-  // ─── Newsletters (JSON) ───────────────────────────────────────────────────
+  // ─── Newsletters ────────────────────────────────────────────────────────────
 
   getOrCreateNewsletter(year, month) {
     const db = load();
     let nl = db.newsletters.find(n => n.year === year && n.month === month);
     if (nl) return { ...nl };
 
-    // Snapshot questions from CSV at newsletter creation time
-    const questions = module.exports.getQuestions();
+    const questions = db.questions.filter(Boolean);
     nl = { id: db._nextId.newsletter++, year, month, questions, form_sent: false, results_sent: false };
     db.newsletters.push(nl);
     save(db);
@@ -147,7 +140,7 @@ module.exports = {
     withDb(db => { const nl = db.newsletters.find(n => n.id === id); if (nl) nl.results_sent = true; });
   },
 
-  // ─── Responses (JSON) ─────────────────────────────────────────────────────
+  // ─── Responses ──────────────────────────────────────────────────────────────
 
   saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilename, musicUrl }) {
     withDb(db => {
@@ -193,8 +186,7 @@ module.exports = {
   },
 
   getComments(newsletterId) {
-    const db = load();
-    return (db.comments || []).filter(c => c.newsletter_id === newsletterId);
+    return (load().comments || []).filter(c => c.newsletter_id === newsletterId);
   },
 
   addComment({ newsletterId, responseId, questionIndex, parentId, authorName, authorEmail, text }) {
