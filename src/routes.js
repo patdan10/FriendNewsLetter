@@ -182,10 +182,13 @@ router.get('/admin/send-form/stream', (req, res) => {
   sseStream(res, async (emit) => {
     const now = new Date();
     const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const currentQuestions = db.getQuestions();
+    db.updateNewsletterQuestions(newsletter.id, currentQuestions);
+    newsletter.questions = currentQuestions;
     const subscribers = db.getSubscribers();
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
 
-    emit('info', `Newsletter #${newsletter.id} · ${subscribers.length} subscriber(s)`);
+    emit('info', `Newsletter #${newsletter.id} · ${subscribers.length} subscriber(s) · ${currentQuestions.length} question(s)`);
     if (newsletter.form_sent) emit('warn', 'Note: form emails already sent this month — resending anyway');
 
     let ok = 0, fail = 0;
@@ -272,6 +275,9 @@ router.get('/admin/send-test/:type/stream', (req, res) => {
   sseStream(res, async (emit) => {
     const now = new Date();
     const newsletter = db.getOrCreateNewsletter(now.getFullYear(), now.getMonth() + 1);
+    const currentQuestions = db.getQuestions();
+    db.updateNewsletterQuestions(newsletter.id, currentQuestions);
+    newsletter.questions = currentQuestions;
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
 
     emit('info', `Sending to ${TEST_EMAIL}...`);
