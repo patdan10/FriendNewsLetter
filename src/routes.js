@@ -647,8 +647,8 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
       </div>
       <div id="tc-upload" class="tc on">
-        <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="display:none">
-        <button type="button" class="upload-btn" onclick="document.getElementById('img-file-input').click()">+ Choose photos</button>
+        <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
+        <label for="img-file-input" class="upload-btn">+ Choose photos</label>
         <div id="img-file-count" class="upload-count"></div>
       </div>
       <div id="tc-url" class="tc"><input type="text" name="image_url" id="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
@@ -764,24 +764,34 @@ function musicRender(hits){
     item.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();musicPick(i);}});
   });
 }
+function timedFetch(url,opts,ms){
+  var ctrl=new AbortController();
+  var t=setTimeout(function(){ctrl.abort();},ms||5000);
+  return fetch(url,Object.assign({},opts,{signal:ctrl.signal})).finally(function(){clearTimeout(t);});
+}
 async function musicSearch(q){
   var seq=++_mSeq;
   var hits=[];
   try{
-    var resp=await fetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8');
-    var data=await resp.json();
-    hits=(data.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
+    var resp=await timedFetch('https://itunes.apple.com/search?term='+encodeURIComponent(q)+'&media=music&entity=song&limit=8',{},5000);
+    if(resp.ok){
+      var data=await resp.json();
+      hits=(data.results||[]).map(function(t){return{title:t.trackName,artist:t.artistName,album:t.collectionName||'',image:(t.artworkUrl100||'').replace('100x100bb','300x300bb')};});
+    }
   }catch(e){}
   if(seq!==_mSeq)return;
   if(hits.length){setMusicStatus('');_mhits=hits;musicRender(hits);return;}
+  setMusicStatus('Trying backup...');
   try{
-    var resp2=await fetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}});
-    var data2=await resp2.json();
-    hits=(data2.recordings||[]).map(function(rec){
-      var rel=(rec.releases||[])[0];
-      var rgid=rel&&rel['release-group']&&rel['release-group'].id;
-      return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
-    });
+    var resp2=await timedFetch('https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=8',{headers:{Accept:'application/json'}},5000);
+    if(resp2.ok){
+      var data2=await resp2.json();
+      hits=(data2.recordings||[]).map(function(rec){
+        var rel=(rec.releases||[])[0];
+        var rgid=rel&&rel['release-group']&&rel['release-group'].id;
+        return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
+      });
+    }
   }catch(e){}
   if(seq!==_mSeq)return;
   setMusicStatus('');
