@@ -50,7 +50,7 @@ function parseFrom(from) {
 }
 
 async function deliver({ toEmail, toName, subject, html }) {
-  if (_testMode) {
+  if (_testMode && toEmail !== TEST_OVERRIDE_EMAIL) {
     subject = `[TEST to ${toName} <${toEmail}>] ${subject}`;
     toEmail = TEST_OVERRIDE_EMAIL;
     toName = TEST_OVERRIDE_NAME;

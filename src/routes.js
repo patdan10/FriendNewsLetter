@@ -689,7 +689,7 @@ body{padding:32px 16px}
 .btn-p{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
 .btn-s{background:#f3f4f6;color:#374151}
 .btn:hover{opacity:.85}
-#log{display:none;background:#0f172a;border-radius:10px;padding:14px 16px;margin-top:14px;font-family:'Cascadia Code','Consolas',monospace;font-size:13px;max-height:220px;overflow-y:auto;line-height:1.6}
+#log,#test-log{display:none;background:#0f172a;border-radius:10px;padding:14px 16px;margin-top:14px;font-family:'Cascadia Code','Consolas',monospace;font-size:13px;max-height:220px;overflow-y:auto;line-height:1.6}
 .ll{margin:0}.li{color:#93c5fd}.ls{color:#cbd5e1}.lo{color:#6ee7b7}.le{color:#fca5a5}.lw{color:#fde68a}.ld{color:#fbbf24;font-weight:700;margin-top:4px}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #f3f4f6;font-size:14px}
