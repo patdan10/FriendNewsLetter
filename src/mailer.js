@@ -162,8 +162,8 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
 </div>`;
   }).join('');
 
-  // Photos, links & music grouped by person at the bottom
-  const mediaRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length || r.music_url).map((r, i, arr) => {
+  // Photos & Links section
+  const photoEmailRows = responses.filter(r => r.image_filename || r.image_url || r.links?.length).map((r, i, arr) => {
     const name = r.name || r.email;
     const h = personHue(name);
     const last = i === arr.length - 1;
@@ -172,25 +172,45 @@ function buildCompiledEmail({ month, year, questions, responses, baseUrl, editUr
     const linksHtml = r.links?.length
       ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')
       : '';
-    const embedUrl = musicEmbedUrl(r.music_url);
-    const musicHtml = embedUrl
-      ? isEmail
-        ? `<div style="margin-top:8px;"><a href="${esc(r.music_url)}" style="display:inline-block;background:#f0fdf4;color:#16a34a;text-decoration:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">♪ Listen on ${musicServiceName(r.music_url)}</a></div>`
-        : `<div style="margin-top:8px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>`
-      : '';
     return `
 <div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
   <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
-  ${imgHtml}${linksHtml}${musicHtml}
+  ${imgHtml}${linksHtml}
 </div>`;
   }).join('');
 
-  const mediaSection = mediaRows ? `
+  const photoSection = photoEmailRows ? `
 <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
   <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
     <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Photos &amp; Links</p>
   </div>
-  <div style="padding:4px 20px 6px;">${mediaRows}</div>
+  <div style="padding:4px 20px 6px;">${photoEmailRows}</div>
+</div>` : '';
+
+  // Music section
+  const musicEmailRows = responses.filter(r => r.music_url).map((r, i, arr) => {
+    const name = r.name || r.email;
+    const h = personHue(name);
+    const last = i === arr.length - 1;
+    const embedUrl = musicEmbedUrl(r.music_url);
+    const musicHtml = embedUrl
+      ? isEmail
+        ? `<a href="${esc(r.music_url)}" style="display:inline-block;background:#f0fdf4;color:#16a34a;text-decoration:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">♪ Listen on ${musicServiceName(r.music_url)}</a>`
+        : `<iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe>`
+      : '';
+    return `
+<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}">
+  <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(name)}</p>
+  ${musicHtml}
+</div>`;
+  }).join('');
+
+  const musicSection = musicEmailRows ? `
+<div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+  <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:14px 20px;">
+    <p style="margin:0;color:#374151;font-size:15px;font-weight:700;">Music</p>
+  </div>
+  <div style="padding:4px 20px 6px;">${musicEmailRows}</div>
 </div>` : '';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -207,7 +227,7 @@ ${viewUrl && isEmail ? `<tr><td style="padding:24px 40px 0;text-align:center;">
   <a href="${viewUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:14px 36px;border-radius:50px;font-size:16px;font-weight:700;letter-spacing:.2px;">💬 View online &amp; comment</a>
   <p style="margin:10px 0 0;color:#9ca3af;font-size:13px;">See music embeds, photos, and leave comments</p>
 </td></tr>` : ''}
-<tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${mediaSection}</td></tr>
+<tr><td style="padding:32px 40px;">${noResp}${questionBlocks}${photoSection}${musicSection}</td></tr>
 <tr><td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
   ${editUrl ? `<p style="margin:0 0 8px;"><a href="${editUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">Update your response</a></p>` : ''}
   ${viewUrl ? `<p style="margin:0 0 8px;"><a href="${viewUrl}" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:600;">View &amp; comment online</a></p>` : ''}

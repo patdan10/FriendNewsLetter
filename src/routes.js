@@ -440,7 +440,10 @@ router.post('/newsletter/:id/comment', (req, res) => {
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     const subscribers = db.getSubscribers();
     const response = db.getResponses(newsletterId).find(r => r.id === parseInt(response_id));
-    const questionText = (newsletter.questions || [])[parseInt(question_index)] || '';
+    const qi = parseInt(question_index);
+    const questionText = qi === -1 ? 'their photo/links'
+      : qi === -2 ? 'their music'
+      : (newsletter.questions || [])[qi] || '';
     sendCommentNotification({
       subscribers,
       commenterEmail: authorEmail,
@@ -1208,7 +1211,6 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
     return `<div class="card"><h2 class="q-label">${qi + 1}. ${esc(q)}</h2>${blocks}</div>`;
   }).join('');
 
-  // Media section
   function musicEmbedLocal(url) {
     if (!url) return null;
     const sp = url.match(/open\.spotify\.com\/(track|album|playlist|show|episode)\/([^?&/]+)/);
@@ -1216,18 +1218,43 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
     if (/music\.apple\.com\//.test(url)) return url.replace('music.apple.com', 'embed.music.apple.com');
     return null;
   }
-  const mediaResps = responses.filter(r => r.image_filename || r.image_url || r.links?.length || r.music_url);
-  const mediaRows = mediaResps.map((r, i) => {
+
+  // Photos & Links section (question_index = -1)
+  const photoResps = responses.filter(r => r.image_filename || r.image_url || r.links?.length);
+  const photoBlocks = photoResps.map(r => {
     const h = personHue(r.name || r.email);
-    const last = i === mediaResps.length - 1;
     const imgSrc = r.image_filename ? `${baseUrl}/uploads/${esc(r.image_filename)}` : r.image_url ? esc(r.image_url) : null;
     const imgHtml = imgSrc ? `<div style="margin-bottom:10px;"><img src="${imgSrc}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>` : '';
-    const linksHtml = r.links?.length ? r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('') : '';
-    const embedUrl = musicEmbedLocal(r.music_url);
-    const musicHtml = embedUrl ? `<div style="margin-top:8px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>` : '';
-    return `<div style="padding:16px 0;${last ? '' : 'border-bottom:1px solid #f3f4f6;'}"><p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>${imgHtml}${linksHtml}${musicHtml}</div>`;
+    const linksHtml = r.links?.length ? `<div style="margin-bottom:4px;">${r.links.map(l => `<a href="${esc(l.url)}" style="display:inline-block;margin:3px 6px 3px 0;background:#ede9fe;color:#7c3aed;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:13px;">${esc(l.label || l.url)}</a>`).join('')}</div>` : '';
+    const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -1);
+    const addId = `add-photo-${r.id}`;
+    return `<div class="answer-block" id="q-1-r${r.id}">
+  <p class="person-tag" style="color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>
+  ${imgHtml}${linksHtml}
+  ${threadComments.length ? `<div class="thread">${renderThread(threadComments, null, 0)}</div>` : ''}
+  <button type="button" class="add-comment-btn" onclick="toggleEl('${addId}')">+ Comment</button>
+  <div id="${addId}" style="display:none;margin-top:8px;">${commentFormHtml({ responseId: r.id, questionIndex: -1 })}</div>
+</div>`;
   }).join('');
-  const mediaSection = mediaRows ? `<div class="card"><h2>Photos, Links &amp; Music</h2>${mediaRows}</div>` : '';
+  const photoSection = photoBlocks ? `<div class="card"><h2 class="q-label">Photos &amp; Links</h2>${photoBlocks}</div>` : '';
+
+  // Music section (question_index = -2)
+  const musicResps = responses.filter(r => r.music_url);
+  const musicBlocks = musicResps.map(r => {
+    const h = personHue(r.name || r.email);
+    const embedUrl = musicEmbedLocal(r.music_url);
+    const musicHtml = embedUrl ? `<div style="margin-bottom:4px;"><iframe src="${esc(embedUrl)}" width="100%" height="${/track|episode/.test(embedUrl) ? 80 : 152}" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px;display:block;"></iframe></div>` : '';
+    const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -2);
+    const addId = `add-music-${r.id}`;
+    return `<div class="answer-block" id="q-2-r${r.id}">
+  <p class="person-tag" style="color:hsl(${h},50%,42%);">${esc(r.name || r.email)}</p>
+  ${musicHtml}
+  ${threadComments.length ? `<div class="thread">${renderThread(threadComments, null, 0)}</div>` : ''}
+  <button type="button" class="add-comment-btn" onclick="toggleEl('${addId}')">+ Comment</button>
+  <div id="${addId}" style="display:none;margin-top:8px;">${commentFormHtml({ responseId: r.id, questionIndex: -2 })}</div>
+</div>`;
+  }).join('');
+  const musicSection = musicBlocks ? `<div class="card"><h2 class="q-label">Music</h2>${musicBlocks}</div>` : '';
 
   const backUrl = isAdmin ? '/admin/past' : '/past';
   const backLabel = isAdmin ? '← Back to Admin' : '← Back';
@@ -1274,7 +1301,8 @@ body{padding:32px 16px}
     <p>${monthName} ${newsletter.year} Edition · ${responses.length} response${responses.length !== 1 ? 's' : ''} · ${comments.length} comment${comments.length !== 1 ? 's' : ''}</p>
   </div>
   ${qSections || '<div class="card"><p style="color:#9ca3af;text-align:center;">No questions this month.</p></div>'}
-  ${mediaSection}
+  ${photoSection}
+  ${musicSection}
   <p style="text-align:center;color:#d1d5db;font-size:11px;padding-bottom:24px;">v${version}</p>
 </div>
 <script>
