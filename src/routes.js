@@ -626,6 +626,8 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 .img-thumb.loaded{opacity:1}
 .img-thumb-spin{position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #e5e7eb;border-top-color:#667eea;border-radius:50%;animation:img-spin .8s linear infinite}
 @keyframes img-spin{to{transform:rotate(360deg)}}
+.img-thumb-rm{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+.img-thumb-rm:hover{background:rgba(0,0,0,.85)}
 </style></head><body>
 <div class="wrap">
   <div class="hdr"><h1>The Horseback Times</h1><p>${monthName} ${newsletter.year} Update</p></div>
@@ -686,21 +688,24 @@ function addLink(){
   c.appendChild(d);d.querySelector('input').focus();
 }
 var _mhits=[],_mTimer=null,_mSeq=0;
-var _imgFileDataUrls=[];
+var _imgFileDataUrls=[],_accFiles=[];
 function imgShowPreviews(urls){
   var w=document.getElementById('img-previews');
   if(!w)return;
   w.innerHTML='';
   var visible=(urls||[]).filter(Boolean);
   if(!visible.length){w.style.display='none';return;}
-  visible.forEach(function(src){
+  visible.forEach(function(src,i){
     var wrap=document.createElement('div');wrap.className='img-thumb-wrap';
     var spin=document.createElement('div');spin.className='img-thumb-spin';
     var img=document.createElement('img');img.className='img-thumb';
     img.onload=function(){img.classList.add('loaded');spin.style.display='none';};
     img.onerror=function(){wrap.parentNode&&wrap.parentNode.removeChild(wrap);};
     img.src=src;
-    wrap.appendChild(spin);wrap.appendChild(img);w.appendChild(wrap);
+    var rm=document.createElement('button');rm.type='button';rm.className='img-thumb-rm';rm.textContent='✕';
+    rm.setAttribute('data-i',i);
+    rm.addEventListener('click',function(){imgRemove(Number(this.getAttribute('data-i')));});
+    wrap.appendChild(spin);wrap.appendChild(img);wrap.appendChild(rm);w.appendChild(wrap);
   });
   w.style.display='flex';
 }
@@ -709,15 +714,35 @@ function imgRefreshPreviews(){
   var urlVal=urlEl&&urlEl.value.trim();
   imgShowPreviews(_imgFileDataUrls.concat(urlVal?[urlVal]:[]));
 }
+function imgRemove(i){
+  if(i<_imgFileDataUrls.length){
+    _imgFileDataUrls.splice(i,1);
+    _accFiles.splice(i,1);
+    var inp=document.getElementById('img-file-input');
+    var dt=new DataTransfer();
+    _accFiles.forEach(function(f){dt.items.add(f);});
+    inp.files=dt.files;
+    var countEl=document.getElementById('img-file-count');
+    if(countEl)countEl.textContent=_accFiles.length?_accFiles.length+' photo'+(_accFiles.length===1?'':'s')+' selected':'';
+  }else{
+    var urlEl=document.getElementById('img-url-input');
+    if(urlEl)urlEl.value='';
+  }
+  imgRefreshPreviews();
+}
 document.getElementById('img-file-input').addEventListener('change',function(){
-  var files=this.files;
+  var newFiles=Array.prototype.slice.call(this.files||[]);
+  if(!newFiles.length)return;
+  _accFiles=_accFiles.concat(newFiles);
+  var dt=new DataTransfer();
+  _accFiles.forEach(function(f){dt.items.add(f);});
+  this.files=dt.files;
   var countEl=document.getElementById('img-file-count');
-  if(!files||!files.length){_imgFileDataUrls=[];imgRefreshPreviews();if(countEl)countEl.textContent='';return;}
-  if(countEl)countEl.textContent=files.length+' photo'+(files.length===1?'':'s')+' selected';
-  var total=files.length,results=new Array(total),done=0;
-  Array.prototype.forEach.call(files,function(file,i){
+  if(countEl)countEl.textContent=_accFiles.length+' photo'+(_accFiles.length===1?'':'s')+' selected';
+  var nc=newFiles.length,nr=new Array(nc),done=0;
+  newFiles.forEach(function(file,i){
     var r=new FileReader();
-    r.onload=function(e){results[i]=e.target.result;if(++done===total){_imgFileDataUrls=results;imgRefreshPreviews();}};
+    r.onload=function(e){nr[i]=e.target.result;if(++done===nc){_imgFileDataUrls=_imgFileDataUrls.concat(nr);imgRefreshPreviews();}};
     r.readAsDataURL(file);
   });
 });
