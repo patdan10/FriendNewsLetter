@@ -707,8 +707,9 @@ function imgShowPreviews(urls){
     var wrap=document.createElement('div');wrap.className='img-thumb-wrap';
     var spin=document.createElement('div');spin.className='img-thumb-spin';
     var img=document.createElement('img');img.className='img-thumb';
-    img.onload=function(){img.classList.add('loaded');spin.style.display='none';};
-    img.onerror=function(){wrap.parentNode&&wrap.parentNode.removeChild(wrap);};
+    var loadTimeout=src.startsWith('data:')?0:setTimeout(function(){img.src='';wrap.parentNode&&wrap.parentNode.removeChild(wrap);},10000);
+    img.onload=function(){if(loadTimeout)clearTimeout(loadTimeout);img.classList.add('loaded');spin.style.display='none';};
+    img.onerror=function(){if(loadTimeout)clearTimeout(loadTimeout);wrap.parentNode&&wrap.parentNode.removeChild(wrap);};
     img.src=src;
     var rm=document.createElement('button');rm.type='button';rm.className='img-thumb-rm';rm.textContent='✕';
     rm.setAttribute('data-i',i);
@@ -785,8 +786,11 @@ function musicRender(hits){
   if(!hits.length){el.innerHTML='<p class="mres-msg">No results. Try a different search.</p>';return;}
   var out='';
   hits.forEach(function(r,i){
+    var artHtml=r.image
+      ?'<img class="mres-art" src="'+mesc(r.image)+'" onerror="this.style.opacity=0">'
+      :'<div class="mres-art"></div>';
     out+='<div class="mres-item" tabindex="0" data-i="'+i+'">'
-      +'<img class="mres-art" src="'+mesc(r.image||'')+'" onerror="this.style.opacity=0">'
+      +artHtml
       +'<div class="mres-info">'
       +'<p class="mres-title">'+mesc(r.title)+'</p>'
       +'<p class="mres-sub">'+mesc(r.artist||'')+(r.album?' &middot; '+mesc(r.album):'')+'</p>'
@@ -824,7 +828,7 @@ async function musicSearch(q){
       hits=(data2.recordings||[]).map(function(rec){
         var rel=(rec.releases||[])[0];
         var rgid=rel&&rel['release-group']&&rel['release-group'].id;
-        return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:rgid?'https://coverartarchive.org/release-group/'+rgid+'/front-250':''};
+        return{title:rec.title||'',artist:(rec['artist-credit']&&rec['artist-credit'][0]&&rec['artist-credit'][0].artist&&rec['artist-credit'][0].artist.name)||'',album:rel&&rel.title||'',image:''};
       });
     }
   }catch(e){}
