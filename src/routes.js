@@ -588,11 +588,10 @@ input:focus,textarea:focus{outline:none;border-color:#667eea}
 .rm{background:#fee2e2;color:#dc2626;border:none;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap;flex-shrink:0}
 .add-btn{background:#ede9fe;color:#7c3aed;border:none;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
 .add-btn:hover{background:#ddd6fe}
-.tabs{display:flex;gap:8px;margin-bottom:14px}
-.tab{padding:8px 16px;border:2px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:#6b7280;background:#fff}
-.tab.on{border-color:#667eea;color:#667eea;background:#f0f0ff}
-.tc{display:none}.tc.on{display:block}
 input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius:10px;cursor:pointer}
+.img-url-input{display:block;width:100%;box-sizing:border-box;padding:10px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;color:#1f2937;outline:none;transition:border-color .15s;margin-top:12px}
+.img-url-input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.1)}
+.img-url-label{display:block;font-size:13px;color:#6b7280;margin-top:14px;margin-bottom:4px}
 .sub-btn{width:100%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:16px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:28px}
 .sub-btn:hover{opacity:.9}
 .msearch-wrap{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #e5e7eb;border-radius:12px;padding:6px 14px}
@@ -642,16 +641,11 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
 
       <div class="sec">Share an Image <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
       <p class="sec-sub">A photo from your month, something that made you smile, etc...</p>
-      <div class="tabs">
-        <button type="button" class="tab on" onclick="tab('upload',this)">Upload file</button>
-        <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
-      </div>
-      <div id="tc-upload" class="tc on">
-        <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
-        <label for="img-file-input" class="upload-btn">+ Choose photos</label>
-        <div id="img-file-count" class="upload-count"></div>
-      </div>
-      <div id="tc-url" class="tc"><input type="text" name="image_url" id="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}"></div>
+      <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
+      <label for="img-file-input" class="upload-btn">+ Choose photos</label>
+      <div id="img-file-count" class="upload-count"></div>
+      <label class="img-url-label" for="img-url-input">Or add an image URL</label>
+      <input type="text" name="image_url" id="img-url-input" class="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}">
       <div id="img-previews" style="display:none;margin-top:10px;flex-wrap:wrap;gap:8px"></div>
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
@@ -710,32 +704,29 @@ function imgShowPreviews(urls){
   });
   w.style.display='flex';
 }
-function tab(id,btn){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
-  document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
-  btn.classList.add('on');
-  document.getElementById('tc-'+id).classList.add('on');
-  if(id==='url'){var el=document.getElementById('img-url-input');imgShowPreviews(el&&el.value.trim()?[el.value.trim()]:[]);}
-  else imgShowPreviews(_imgFileDataUrls);
+function imgRefreshPreviews(){
+  var urlEl=document.getElementById('img-url-input');
+  var urlVal=urlEl&&urlEl.value.trim();
+  imgShowPreviews(_imgFileDataUrls.concat(urlVal?[urlVal]:[]));
 }
 document.getElementById('img-file-input').addEventListener('change',function(){
   var files=this.files;
   var countEl=document.getElementById('img-file-count');
-  if(!files||!files.length){_imgFileDataUrls=[];imgShowPreviews([]);if(countEl)countEl.textContent='';return;}
+  if(!files||!files.length){_imgFileDataUrls=[];imgRefreshPreviews();if(countEl)countEl.textContent='';return;}
   if(countEl)countEl.textContent=files.length+' photo'+(files.length===1?'':'s')+' selected';
   var total=files.length,results=new Array(total),done=0;
   Array.prototype.forEach.call(files,function(file,i){
     var r=new FileReader();
-    r.onload=function(e){results[i]=e.target.result;if(++done===total){_imgFileDataUrls=results;imgShowPreviews(results);}};
+    r.onload=function(e){results[i]=e.target.result;if(++done===total){_imgFileDataUrls=results;imgRefreshPreviews();}};
     r.readAsDataURL(file);
   });
 });
 var _imgUrlTimer=null;
 document.getElementById('img-url-input').addEventListener('input',function(){
-  clearTimeout(_imgUrlTimer);var v=this.value.trim();
-  _imgUrlTimer=setTimeout(function(){imgShowPreviews(v?[v]:[]);},400);
+  clearTimeout(_imgUrlTimer);
+  _imgUrlTimer=setTimeout(imgRefreshPreviews,400);
 });
-(function(){var el=document.getElementById('img-url-input');if(el&&el.value.trim())imgShowPreviews([el.value.trim()]);})();
+(function(){imgRefreshPreviews();})();
 document.getElementById('music-q').addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
 function musicInput(val){
   clearTimeout(_mTimer);
