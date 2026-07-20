@@ -108,7 +108,7 @@ router.post('/form/:token', upload.array('images', 10), (req, res) => {
     const answers = newsletter.questions.map((_, i) => (req.body[`answer_${i}`] || '').trim());
     const subscriber = db.getSubscribers().find(s => s.email === email);
     const name = subscriber?.name || email;
-    const imageUrl = (req.body.image_url || '').trim();
+    const imageUrls = [].concat(req.body.image_urls || []).map(u => u.trim()).filter(Boolean);
     const imageFilenames = (req.files || []).map(f => path.basename(f.path));
     const musicUrl = (req.body.music_url || '').trim();
 
@@ -118,7 +118,7 @@ router.post('/form/:token', upload.array('images', 10), (req, res) => {
       .map((url, i) => ({ url: normalizeUrl(url.trim()), label: (linkLabels[i] || '').trim() }))
       .filter(l => l.url);
 
-    db.saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilenames, musicUrl });
+    db.saveResponse({ newsletterId, email, name, answers, links, imageUrls, imageFilenames, musicUrl });
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     sendAdminNotification({ responderName: name, newsletter, baseUrl }).catch(() => {});
     res.send(thankYouPage(MONTHS[newsletter.month - 1], newsletter.year, `${baseUrl}/form/${req.params.token}`));
@@ -353,7 +353,7 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
   const response = db.getResponseById(parseInt(req.params.id));
   if (!response) return res.status(404).send(errorPage('Response not found'));
 
-  const imageUrl = (req.body.image_url || '').trim();
+  const imageUrls = [].concat(req.body.image_urls || []).map(u => u.trim()).filter(Boolean);
   const existingFilenames = response.image_filenames && response.image_filenames.length
     ? response.image_filenames
     : (response.image_filename ? [response.image_filename] : []);
@@ -367,7 +367,7 @@ router.post('/admin/response/:id', upload.single('image'), (req, res) => {
     .filter(l => l.url);
 
   const musicUrl = (req.body.music_url || '').trim();
-  db.patchResponse(response.id, { imageUrl, imageFilenames, links, musicUrl });
+  db.patchResponse(response.id, { imageUrls, imageFilenames, links, musicUrl });
   res.redirect('/admin/responses');
 });
 
@@ -563,6 +563,10 @@ function formPage({ newsletter, email, name, existing, token }) {
     return { title: 'Music linked', artist: '', image: '' };
   })();
 
+  const existingUrlList = existing
+    ? (existing.image_urls && existing.image_urls.length ? existing.image_urls : (existing.image_url ? [existing.image_url] : []))
+    : [];
+
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${monthName} ${newsletter.year} — The Horseback Times</title>
@@ -646,8 +650,12 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
       <input type="file" name="images" accept="image/*" multiple id="img-file-input" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
       <label for="img-file-input" class="upload-btn">+ Choose photos</label>
       <div id="img-file-count" class="upload-count"></div>
-      <label class="img-url-label" for="img-url-input">Or add an image URL</label>
-      <input type="text" name="image_url" id="img-url-input" class="img-url-input" placeholder="https://example.com/photo.jpg" value="${esc(existing?.image_url || '')}">
+      <label class="img-url-label">Or add photos from the internet</label>
+      <div style="display:flex;gap:8px;align-items:stretch;margin-top:4px">
+        <input type="text" id="img-url-input" class="img-url-input" placeholder="https://example.com/photo.jpg" style="margin-top:0;flex:1">
+        <button type="button" id="img-url-add" class="upload-btn" style="margin-top:0;padding:10px 16px">+ Add</button>
+      </div>
+      <div id="img-url-hiddens"></div>
       <div id="img-previews" style="display:none;margin-top:10px;flex-wrap:wrap;gap:8px"></div>
 
       <div class="sec">Share Music <span style="font-weight:400;font-size:14px;color:#9ca3af">(optional)</span></div>
@@ -688,7 +696,7 @@ function addLink(){
   c.appendChild(d);d.querySelector('input').focus();
 }
 var _mhits=[],_mTimer=null,_mSeq=0;
-var _imgFileDataUrls=[],_accFiles=[];
+var _imgFileDataUrls=[],_accFiles=[],_urlList=${JSON.stringify(existingUrlList)};
 function imgShowPreviews(urls){
   var w=document.getElementById('img-previews');
   if(!w)return;
@@ -709,10 +717,16 @@ function imgShowPreviews(urls){
   });
   w.style.display='flex';
 }
+function syncUrlHiddens(){
+  var c=document.getElementById('img-url-hiddens');if(!c)return;
+  c.innerHTML='';
+  _urlList.forEach(function(u){
+    var inp=document.createElement('input');inp.type='hidden';inp.name='image_urls';inp.value=u;
+    c.appendChild(inp);
+  });
+}
 function imgRefreshPreviews(){
-  var urlEl=document.getElementById('img-url-input');
-  var urlVal=urlEl&&urlEl.value.trim();
-  imgShowPreviews(_imgFileDataUrls.concat(urlVal?[urlVal]:[]));
+  imgShowPreviews(_imgFileDataUrls.concat(_urlList));
 }
 function imgRemove(i){
   if(i<_imgFileDataUrls.length){
@@ -725,8 +739,8 @@ function imgRemove(i){
     var countEl=document.getElementById('img-file-count');
     if(countEl)countEl.textContent=_accFiles.length?_accFiles.length+' photo'+(_accFiles.length===1?'':'s')+' selected':'';
   }else{
-    var urlEl=document.getElementById('img-url-input');
-    if(urlEl)urlEl.value='';
+    _urlList.splice(i-_imgFileDataUrls.length,1);
+    syncUrlHiddens();
   }
   imgRefreshPreviews();
 }
@@ -746,13 +760,18 @@ document.getElementById('img-file-input').addEventListener('change',function(){
     r.readAsDataURL(file);
   });
 });
-var _imgUrlTimer=null;
-document.getElementById('img-url-input').addEventListener('input',function(){
-  clearTimeout(_imgUrlTimer);
-  _imgUrlTimer=setTimeout(imgRefreshPreviews,400);
+document.getElementById('img-url-add').addEventListener('click',function(){
+  var inp=document.getElementById('img-url-input');
+  var v=inp.value.trim();if(!v)return;
+  _urlList.push(v);syncUrlHiddens();inp.value='';imgRefreshPreviews();
 });
-(function(){imgRefreshPreviews();})();
-document.getElementById('music-q').addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
+document.getElementById('img-url-input').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();document.getElementById('img-url-add').click();}
+});
+(function(){syncUrlHiddens();imgRefreshPreviews();})();
+document.querySelector('form').addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA')e.preventDefault();
+});
 function musicInput(val){
   clearTimeout(_mTimer);
   var q=val.trim();
@@ -1192,7 +1211,7 @@ function editResponsePage({ response, newsletter }) {
 
   const currentImgSrcs = [
     ...(response.image_filenames && response.image_filenames.length ? response.image_filenames.map(fn => `/uploads/${esc(fn)}`) : (response.image_filename ? [`/uploads/${esc(response.image_filename)}`] : [])),
-    ...(response.image_url ? [esc(response.image_url)] : [])
+    ...(response.image_urls && response.image_urls.length ? response.image_urls.map(u => esc(u)) : (response.image_url ? [esc(response.image_url)] : []))
   ];
   const currentImgHtml = currentImgSrcs.length
     ? `<div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">${currentImgSrcs.map(s => `<img src="${s}" style="max-height:120px;max-width:200px;border-radius:8px;object-fit:cover">`).join('')}</div><label style="display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;font-size:13px;color:#dc2626;cursor:pointer;"><input type="checkbox" name="clear_image" value="1"> Remove current image(s)</label>`
@@ -1245,7 +1264,7 @@ input[type=file]{width:100%;padding:10px;border:2px dashed #e5e7eb;border-radius
         <button type="button" class="tab" onclick="tab('url',this)">Image URL</button>
       </div>
       <div id="tc-upload" class="tc on"><input type="file" name="image" accept="image/*"></div>
-      <div id="tc-url" class="tc"><input type="text" name="image_url" placeholder="https://example.com/photo.jpg"></div>
+      <div id="tc-url" class="tc"><input type="text" name="image_urls" placeholder="https://example.com/photo.jpg"></div>
 
       <div class="sec">🎵 Music</div>
       <input type="text" name="music_url" placeholder="Spotify or Apple Music URL" value="${esc(response.music_url || '')}">
@@ -1350,12 +1369,12 @@ function newsletterViewPage({ newsletter, responses, comments, token, viewerName
   }
 
   // Photos section (question_index = -1)
-  const photoResps = responses.filter(r => (r.image_filenames && r.image_filenames.length) || r.image_filename || r.image_url);
+  const photoResps = responses.filter(r => (r.image_filenames && r.image_filenames.length) || r.image_filename || (r.image_urls && r.image_urls.length) || r.image_url);
   const photoBlocks = photoResps.map(r => {
     const h = personHue(r.name || r.email);
     const imgSrcs = [
       ...(r.image_filenames && r.image_filenames.length ? r.image_filenames.map(fn => `${baseUrl}/uploads/${esc(fn)}`) : (r.image_filename ? [`${baseUrl}/uploads/${esc(r.image_filename)}`] : [])),
-      ...(r.image_url ? [esc(r.image_url)] : [])
+      ...(r.image_urls && r.image_urls.length ? r.image_urls.map(u => esc(u)) : (r.image_url ? [esc(r.image_url)] : []))
     ];
     const imgHtml = imgSrcs.map(src => `<div style="margin-bottom:10px;"><img src="${src}" alt="Photo" style="max-width:100%;border-radius:10px;display:block;"></div>`).join('');
     const threadComments = comments.filter(c => c.response_id === r.id && c.question_index === -1);

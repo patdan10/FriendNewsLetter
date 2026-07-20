@@ -102,13 +102,14 @@ module.exports = {
 
   // ─── Responses ──────────────────────────────────────────────────────────────
 
-  saveResponse({ newsletterId, email, name, answers, links, imageUrl, imageFilenames, musicUrl }) {
+  saveResponse({ newsletterId, email, name, answers, links, imageUrls, imageFilenames, musicUrl }) {
     withDb(db => {
       const existing = db.responses.find(r => r.newsletter_id === newsletterId && r.email === email);
       const entry = {
         newsletter_id: newsletterId, email, name: name || email,
         answers, links: links || [],
-        image_url: imageUrl || null,
+        image_url: null,
+        image_urls: imageUrls || [],
         image_filenames: imageFilenames || [],
         music_url: musicUrl || null,
         submitted_at: new Date().toISOString()
@@ -134,11 +135,12 @@ module.exports = {
     return load().responses.find(r => r.id === id) || null;
   },
 
-  patchResponse(id, { imageUrl, imageFilenames, links, musicUrl }) {
+  patchResponse(id, { imageUrls, imageFilenames, links, musicUrl }) {
     withDb(db => {
       const r = db.responses.find(r => r.id === id);
       if (!r) return;
-      r.image_url = imageUrl || null;
+      r.image_url = null;
+      r.image_urls = imageUrls || [];
       r.image_filenames = imageFilenames || [];
       r.links = links || [];
       r.music_url = musicUrl || null;
